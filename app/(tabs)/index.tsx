@@ -1,48 +1,29 @@
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
-  Animated,
+  ActivityIndicator,
+  Alert,
   Dimensions,
+  Image,
+  Modal,
+  Pressable,
   SafeAreaView,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { GetChartAnalysis } from '../../services/aiServices';
 import Svg, { Path } from 'react-native-svg';
 
 const { width } = Dimensions.get('window');
 
-const Candlestick = ({ type, candleHeight, index }: { type: string; candleHeight: number; index: number }) => {
-  const animatedValue = new Animated.Value(0);
-
-  useEffect(() => {
-    Animated.timing(animatedValue, {
-      toValue: 1,
-      duration: 500,
-      delay: index * 100,
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
+const Candlestick = ({ type, candleHeight }: { type: string; candleHeight: number }) => {
   return (
-    <Animated.View
-      style={[
-        styles.candlestick,
-        {
-          transform: [
-            {
-              translateY: animatedValue.interpolate({
-                inputRange: [0, 1],
-                outputRange: [20, 0],
-              }),
-            },
-          ],
-          opacity: animatedValue,
-        },
-      ]}
-    >
+    <View style={styles.candlestick}>
       <View
         style={[
           styles.wick,
@@ -62,7 +43,7 @@ const Candlestick = ({ type, candleHeight, index }: { type: string; candleHeight
           },
         ]}
       />
-    </Animated.View>
+    </View>
   );
 };
 
@@ -89,7 +70,6 @@ const CandlestickChart = () => {
             key={index}
             type={candle.type}
             candleHeight={candle.height}
-            index={index}
           />
         ))}
       </View>
@@ -112,59 +92,161 @@ const CandlestickChart = () => {
   );
 };
 
-const TradingChartApp = () => {
-  const [activeTab, setActiveTab] = useState('Analysis');
-  const floatAnimation = new Animated.Value(0);
+// Types
+interface AnalysisResult {
+  text: string;
+  answer: string;
+}
 
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(floatAnimation, {
-          toValue: 1,
-          duration: 2000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(floatAnimation, {
-          toValue: 0,
-          duration: 2000,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
+interface ImageAsset {
+  uri: string;
+  width?: number;
+  height?: number;
+}
+
+enum AnalysisState {
+  IDLE = 'idle',
+  LOADING = 'loading',
+  SUCCESS = 'success',
+  ERROR = 'error',
+}
+
+enum ImageSource {
+  GALLERY = 'gallery',
+  CAMERA = 'camera',
+}
+
+const TradingChartApp = () => {
+  const [selectedImage, setSelectedImage] = useState<ImageAsset | null>(null);
+  const [analysisState, setAnalysisState] = useState<AnalysisState>(AnalysisState.IDLE);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showImageSourceModal, setShowImageSourceModal] = useState<boolean>(false);
+  const [showAnalysisModal, setShowAnalysisModal] = useState<boolean>(false);
+
+  // Permission handling
+  const requestCameraPermissions = useCallback(async (): Promise<boolean> => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert(
+          'Camera Permission Required',
+          'Please enable camera permissions to take photos.',
+          [{ text: 'OK' }]
+        );
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Camera permission request failed:', error);
+      return false;
+    }
   }, []);
 
-  const TabIcon = ({ active, iconName }: { active: boolean; iconName: string }) => {
-    const color = active ? '#10b981' : '#6b7280';
-    
-    if (iconName === 'Analysis') {
-      return (
-        <View style={styles.barChartIcon}>
-          <View style={[styles.bar, { backgroundColor: color, height: 8 }]} />
-          <View style={[styles.bar, { backgroundColor: color, height: 12 }]} />
-          <View style={[styles.bar, { backgroundColor: color, height: 6 }]} />
-          <View style={[styles.bar, { backgroundColor: color, height: 10 }]} />
-        </View>
-      );
+  const requestGalleryPermissions = useCallback(async (): Promise<boolean> => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert(
+          'Gallery Permission Required',
+          'Please enable gallery permissions to select photos.',
+          [{ text: 'OK' }]
+        );
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Gallery permission request failed:', error);
+      return false;
     }
+  }, []);
+
+  const handleImageSourceSelect = async (source: ImageSource) => {
+    setShowImageSourceModal(false);
     
-    return (
-      <View style={[styles.clockIcon, { borderColor: color }]}>
-        <View style={[styles.clockHand, { backgroundColor: color }]} />
-      </View>
-    );
+    if (source === ImageSource.CAMERA) {
+      const hasPermission = await requestCameraPermissions();
+      if (hasPermission) {
+        await takePhoto();
+      }
+    } else {
+      const hasPermission = await requestGalleryPermissions();
+      if (hasPermission) {
+        await pickImage();
+      }
+    }
+  };
+
+  const takePhoto = async () => {
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const selectedImage = result.assets[0];
+        setSelectedImage(selectedImage);
+        await analyzeImage(selectedImage.uri);
+      }
+    } catch (error) {
+      console.error('Error taking photo:', error);
+      Alert.alert('Error', 'Failed to take photo. Please try again.');
+    }
+  };
+
+  const pickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const selectedImage = result.assets[0];
+        setSelectedImage(selectedImage);
+        await analyzeImage(selectedImage.uri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
+    }
+  };
+
+  const analyzeImage = async (imageUri: string) => {
+    if (!imageUri) return;
+
+    setAnalysisState(AnalysisState.LOADING);
+    setError(null);
+    
+    try {
+      const result = await GetChartAnalysis(imageUri);
+      setAnalysisResult(result);
+      setAnalysisState(AnalysisState.SUCCESS);
+      setShowAnalysisModal(true);
+    } catch (error) {
+      console.error('Error analyzing image:', error);
+      setError('Failed to analyze the chart. Please try again with a clearer image.');
+      setAnalysisState(AnalysisState.ERROR);
+      Alert.alert('Analysis Error', 'Failed to analyze the chart. Please try again with a clearer image.');
+    } 
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#111827" />
-      
+
       <View style={styles.header}>
         <View style={styles.menuButton}>
-          <View style={styles.menuIcon}>
-            <View style={styles.menuLine} />
-            <View style={styles.menuLine} />
-            <View style={styles.menuLine} />
-          </View>
+          <View style={styles.menuIcon} />
         </View>
       </View>
 
@@ -173,36 +255,96 @@ const TradingChartApp = () => {
       </View>
 
       <View style={styles.titleSection}>
-        <Animated.View
-          style={{
-            transform: [
-              {
-                translateY: floatAnimation.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, -10],
-                }),
-              },
-            ],
-          }}
-        >
-          <Text style={styles.mainTitle}>Graph AI</Text>
-        </Animated.View>
+        <Text style={styles.mainTitle}>Graph AI</Text>
         <Text style={styles.subtitle}>
-          Upload a screenshot and get{'\n'}instant Trading Analysis
+          Upload a screenshot and get instant Trading Analysis
         </Text>
       </View>
 
+      {/* Analysis Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showAnalysisModal}
+        onRequestClose={() => setShowAnalysisModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Trade Analysis Report</Text>
+              <TouchableOpacity onPress={() => setShowAnalysisModal(false)} style={styles.closeButton}>
+                <Text style={{ color: 'white', fontSize: 18 }}>X</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalBody}>
+              {selectedImage && (
+                <Image source={{ uri: selectedImage.uri }} style={styles.imagePreview} resizeMode="contain" />
+              )}
+              {analysisResult && (
+                <>
+                  <View style={styles.analysisSection}>
+                    <Text style={styles.analysisSectionTitle}>Chart Summary</Text>
+                    <Text style={styles.analysisContent}>{analysisResult.text}</Text>
+                  </View>
+                  <View style={styles.analysisSection}>
+                    <Text style={styles.analysisSectionTitle}>Trading Insights & Strategy</Text>
+                    <Text style={styles.analysisContent}>{analysisResult.answer}</Text>
+                  </View>
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Image Source Selection Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={showImageSourceModal}
+        onRequestClose={() => setShowImageSourceModal(false)}
+      >
+        <Pressable style={styles.bottomSheetOverlay} onPress={() => setShowImageSourceModal(false)}>
+          <View style={styles.imageSourceModalContent}>
+            <Text style={styles.modalTitle}>Select Image Source</Text>
+            <TouchableOpacity style={styles.imageSourceButton} onPress={() => handleImageSourceSelect(ImageSource.CAMERA)}>
+              <Text style={styles.imageSourceButtonText}>Take Photo</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.imageSourceButton} onPress={() => handleImageSourceSelect(ImageSource.GALLERY)}>
+              <Text style={styles.imageSourceButtonText}>Choose from Gallery</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.imageSourceButton} onPress={() => setShowImageSourceModal(false)}>
+              <Text style={[styles.imageSourceButtonText, { color: '#f472b6' }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+
       <View style={styles.buttonSection}>
-        <TouchableOpacity style={styles.uploadButton}>
+        <TouchableOpacity
+          style={styles.uploadButton}
+          onPress={() => setShowImageSourceModal(true)}
+          disabled={analysisState === AnalysisState.LOADING}
+        >
           <LinearGradient
             colors={['#10b981', '#06b6d4']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.gradientButton}
           >
-            <Text style={styles.uploadButtonTitle}>Upload a Chart</Text>
-            <Text style={styles.uploadButtonSubtitle}>Snap, Upload and Trade Smarter</Text>
+            {analysisState === AnalysisState.LOADING ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <>
+                <Text style={styles.uploadButtonTitle}>Upload a Chart</Text>
+                <Text style={styles.uploadButtonSubtitle}>Snap, Upload and Trade Smarter</Text>
+              </>
+            )}
           </LinearGradient>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.secondaryButton}>
+          <Text style={styles.secondaryButtonText}>Market Research</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.proButton}>
@@ -218,6 +360,84 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#111827',
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: '#111827',
+  },
+  bottomSheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    flex: 1,
+    backgroundColor: '#111827',
+    padding: 20,
+    paddingTop: 40, // Add padding for status bar
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#f3f4f6',
+  },
+  closeButton: {
+    padding: 8,
+  },
+  modalBody: {
+    flex: 1,
+  },
+  imageSourceModalContent: {
+    backgroundColor: '#1f2937',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    gap: 10,
+  },
+  imageSourceButton: {
+    backgroundColor: '#374151',
+    padding: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  imageSourceButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  imagePreview: {
+    width: '100%',
+    height: 220,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  image: {
+    width: '100%',
+    height: 250,
+    borderRadius: 8,
+  },
+  analysisSection: {
+    marginBottom: 24,
+  },
+  analysisSectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#22d3ee',
+    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#374151',
+    paddingBottom: 8,
+  },
+  analysisContent: {
+    fontSize: 16,
+    color: '#e5e7eb',
+    lineHeight: 26,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -230,12 +450,6 @@ const styles = StyleSheet.create({
     width: 24,
     height: 18,
     justifyContent: 'space-between',
-  },
-  menuLine: {
-    width: 24,
-    height: 2,
-    backgroundColor: '#ffffff',
-    borderRadius: 1,
   },
   chartSection: {
     paddingHorizontal: 24,
@@ -277,23 +491,23 @@ const styles = StyleSheet.create({
   titleSection: {
     alignItems: 'center',
     paddingHorizontal: 24,
-    marginBottom: 48,
+    marginBottom: 32,
   },
   mainTitle: {
     fontSize: 36,
     fontWeight: 'bold',
     color: '#ffffff',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   subtitle: {
-    fontSize: 18,
+    fontSize: 16,
     color: '#9ca3af',
     textAlign: 'center',
-    lineHeight: 26,
+    lineHeight: 24,
   },
   buttonSection: {
     paddingHorizontal: 24,
-    marginBottom: 32,
+    marginBottom: 24,
   },
   uploadButton: {
     marginBottom: 16,
@@ -303,9 +517,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 16,
     elevation: 8,
+    overflow: 'hidden',
   },
   gradientButton: {
-    paddingVertical: 16,
+    paddingVertical: 20,
     paddingHorizontal: 24,
     borderRadius: 16,
     alignItems: 'center',
@@ -313,15 +528,30 @@ const styles = StyleSheet.create({
   uploadButtonTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#1f2937',
+    color: 'white',
     marginBottom: 4,
   },
   uploadButtonSubtitle: {
-    fontSize: 16,
-    color: '#374151',
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 14,
+  },
+  secondaryButton: {
+    backgroundColor: '#1f2937',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(156, 163, 175, 0.2)',
+  },
+  secondaryButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#ffffff',
   },
   proButton: {
-    backgroundColor: '#1f2937',
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
     borderWidth: 1,
     borderColor: 'rgba(16, 185, 129, 0.3)',
     borderRadius: 16,
@@ -332,50 +562,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#10b981',
-  },
-  bottomNav: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    backgroundColor: 'rgba(31, 41, 55, 0.5)',
-    paddingVertical: 16,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(107, 114, 128, 0.3)',
-  },
-  navItem: {
-    alignItems: 'center',
-    paddingVertical: 4,
-  },
-  navText: {
-    fontSize: 14,
-    marginTop: 4,
-  },
-  barChartIcon: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    width: 24,
-    height: 24,
-    justifyContent: 'center',
-  },
-  bar: {
-    width: 3,
-    marginHorizontal: 1,
-    borderRadius: 1,
-  },
-  clockIcon: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  clockHand: {
-    width: 1,
-    height: 6,
-    position: 'absolute',
-    top: 2,
   },
 });
 

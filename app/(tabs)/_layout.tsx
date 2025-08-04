@@ -4,10 +4,10 @@ import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { HapticTab } from '@/components/HapticTab';
-import { IconSymbol } from '@/components/ui/IconSymbol';
+
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -19,7 +19,6 @@ export default function TabLayout() {
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         tabBarInactiveTintColor: '#9ca3af',
         headerShown: false,
-        tabBarButton: HapticTab,
         tabBarStyle: {
           ...Platform.select({
             ios: {
@@ -70,9 +69,9 @@ export default function TabLayout() {
           title: 'Home',
           tabBarIcon: ({ color, focused }) => (
             <View style={[styles.iconContainer, focused && styles.activeIconContainer]}>
-              <IconSymbol 
+              <Ionicons
                 size={24} 
-                name="house.fill" 
+                name="home" 
                 color={focused ? '#ffffff' : color} 
               />
             </View>
@@ -85,18 +84,15 @@ export default function TabLayout() {
           title: 'Explore',
           tabBarIcon: ({ color, focused }) => (
             <View style={[styles.iconContainer, focused && styles.activeIconContainer]}>
-              <IconSymbol 
+              <Ionicons 
                 size={24} 
-                name="paperplane.fill" 
+                name="paper-plane" 
                 color={focused ? '#ffffff' : color} 
               />
             </View>
           ),
         }}
       />
-     
-
-     
     </Tabs>
   );
 }
