@@ -1,12 +1,15 @@
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Dimensions,
   Image,
   Modal,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -14,21 +17,47 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
-import { GetChartAnalysis } from '../../services/aiServices';
-import Svg, { Path } from 'react-native-svg';
+import Purchases, { CustomerInfo } from 'react-native-purchases';
+import Svg, { Defs, Path, Stop, LinearGradient as SvgLinearGradient } from 'react-native-svg';
+import AnalysisView, { FormattedAnalysis } from '../../components/AnalysisView';
+import MarketResearch from '../../components/MarketResearch';
+import MarketResearchReportView from '../../components/MarketResearchReportView';
+import PaywallScreen from '../../components/Paywall';
+import { GetChartAnalysis, MarketResearchReport } from '../../services/aiServices';
+import { initDB, saveAnalysis, saveResearch } from '../../services/dbService';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
-const Candlestick = ({ type, candleHeight }: { type: string; candleHeight: number }) => {
+const Candlestick = ({ type, candleHeight, index }: { type: string; candleHeight: number; index: number }) => {
+  const animatedValue = React.useRef(new Animated.Value(0)).current;
+  
+  React.useEffect(() => {
+    Animated.timing(animatedValue, {
+      toValue: 1,
+      duration: 800,
+      delay: index * 100,
+      useNativeDriver: false,
+    }).start();
+  }, [animatedValue, index]);
+
   return (
-    <View style={styles.candlestick}>
+    <Animated.View 
+      style={[
+        styles.candlestick,
+        {
+          transform: [{
+            scaleY: animatedValue
+          }]
+        }
+      ]}
+    >
       <View
         style={[
           styles.wick,
           {
-            backgroundColor: type === 'bullish' ? '#22d3ee' : '#f472b6',
+            backgroundColor: type === 'bullish' ? '#00d4aa' : '#ff6b9d',
             height: candleHeight + 15,
             top: -7,
           },
@@ -38,12 +67,12 @@ const Candlestick = ({ type, candleHeight }: { type: string; candleHeight: numbe
         style={[
           styles.candleBody,
           {
-            backgroundColor: type === 'bullish' ? '#22d3ee' : '#f472b6',
+            backgroundColor: type === 'bullish' ? '#00d4aa' : '#ff6b9d',
             height: candleHeight,
           },
         ]}
       />
-    </View>
+    </Animated.View>
   );
 };
 
@@ -64,40 +93,50 @@ const CandlestickChart = () => {
 
   return (
     <View style={styles.chartContainer}>
-      <View style={styles.candlestickRow}>
-        {candlesticks.map((candle, index) => (
-          <Candlestick
-            key={index}
-            type={candle.type}
-            candleHeight={candle.height}
+      <View style={styles.chartBackground}>
+        <View style={styles.gridLines}>
+          {[...Array(5)].map((_, i) => (
+            <View key={i} style={styles.gridLine} />
+          ))}
+        </View>
+        
+        <View style={styles.candlestickRow}>
+          {candlesticks.map((candle, index) => (
+            <Candlestick
+              key={index}
+              type={candle.type}
+              candleHeight={candle.height}
+              index={index}
+            />
+          ))}
+        </View>
+        
+        <Svg
+          style={styles.trendLine}
+          width={width - 48}
+          height={120}
+          viewBox={`0 0 ${width - 48} 120`}
+        >
+          <Defs>
+            <SvgLinearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <Stop offset="0%" stopColor="#00d4aa" stopOpacity="1" />
+              <Stop offset="100%" stopColor="#00a8ff" stopOpacity="1" />
+            </SvgLinearGradient>
+          </Defs>
+          <Path
+            d={`M20,100 Q${(width - 48) * 0.25},80 ${(width - 48) * 0.4},60 T${(width - 48) * 0.7},30 T${width - 68},20`}
+            stroke="url(#grad)"
+            strokeWidth="3"
+            fill="none"
+            opacity="0.9"
           />
-        ))}
+        </Svg>
       </View>
-      
-      <Svg
-        style={styles.trendLine}
-        width={width - 48}
-        height={120}
-        viewBox={`0 0 ${width - 48} 120`}
-      >
-        <Path
-          d={`M20,100 Q${(width - 48) * 0.25},80 ${(width - 48) * 0.4},60 T${(width - 48) * 0.7},30 T${width - 68},20`}
-          stroke="#22d3ee"
-          strokeWidth="3"
-          fill="none"
-          opacity="0.8"
-        />
-      </Svg>
     </View>
   );
 };
 
 // Types
-interface AnalysisResult {
-  text: string;
-  answer: string;
-}
-
 interface ImageAsset {
   uri: string;
   width?: number;
@@ -117,12 +156,74 @@ enum ImageSource {
 }
 
 const TradingChartApp = () => {
+  const [researchReport, setResearchReport] = useState<MarketResearchReport | null>(null);
+  const [showReportModal, setShowReportModal] = useState<boolean>(false);
   const [selectedImage, setSelectedImage] = useState<ImageAsset | null>(null);
   const [analysisState, setAnalysisState] = useState<AnalysisState>(AnalysisState.IDLE);
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [showResearchModal, setShowResearchModal] = useState<boolean>(false);
+  const [analysisResult, setAnalysisResult] = useState<FormattedAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showImageSourceModal, setShowImageSourceModal] = useState<boolean>(false);
   const [showAnalysisModal, setShowAnalysisModal] = useState<boolean>(false);
+  const [showPaywall, setShowPaywall] = useState<boolean>(false);
+  const [isSubscribed, setIsSubscribed] = useState(false);
+
+  // Animated values for micro-interactions
+  const fadeAnim = React.useRef(new Animated.Value(0)).current;
+  const scaleAnim = React.useRef(new Animated.Value(0.9)).current;
+
+  useEffect(() => {
+    // Entrance animation
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 100,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    const checkSubscription = async () => {
+      try {
+        const customerInfo = await Purchases.getCustomerInfo();
+        if (typeof customerInfo.entitlements.active.pro !== 'undefined') {
+          setIsSubscribed(true);
+        }
+      } catch (e) {
+        console.error('Error checking subscription', e);
+      }
+    };
+
+    checkSubscription();
+
+    initDB().catch(err => {
+      console.error("DB Init failed:", err);
+      Alert.alert("Database Error", "Could not initialize the history database.");
+    });
+  }, [fadeAnim, scaleAnim]);
+
+  const handleSaveResearch = async () => {
+    if (researchReport) {
+      try {
+        await saveResearch(researchReport);
+        Alert.alert('Saved', 'The research report has been saved to your history.');
+        setShowReportModal(false);
+      } catch (error) {
+        console.error('Failed to save research report:', error);
+        Alert.alert('Error', 'Could not save the report. Please try again.');
+      }
+    }
+  };
+
+  const handleResearchComplete = (report: MarketResearchReport) => {
+    setResearchReport(report);
+    setShowReportModal(true);
+  };
 
   // Permission handling
   const requestCameraPermissions = useCallback(async (): Promise<boolean> => {
@@ -184,7 +285,7 @@ const TradingChartApp = () => {
   const takePhoto = async () => {
     try {
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
@@ -204,7 +305,7 @@ const TradingChartApp = () => {
   const pickImage = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
@@ -228,10 +329,19 @@ const TradingChartApp = () => {
     setError(null);
     
     try {
-      const result = await GetChartAnalysis(imageUri);
-      setAnalysisResult(result);
-      setAnalysisState(AnalysisState.SUCCESS);
-      setShowAnalysisModal(true);
+      const analysisResultJson = await GetChartAnalysis(imageUri);
+      if (analysisResultJson && analysisResultJson.summary) {
+        const fullAnalysis: FormattedAnalysis = { 
+          ...analysisResultJson,
+          imageUri: imageUri 
+        };
+        setAnalysisResult(fullAnalysis);
+        setAnalysisState(AnalysisState.SUCCESS);
+        setShowAnalysisModal(true);
+        await saveAnalysis(fullAnalysis);
+      } else {
+        throw new Error('Received invalid analysis format from server.');
+      }
     } catch (error) {
       console.error('Error analyzing image:', error);
       setError('Failed to analyze the chart. Please try again with a clearer image.');
@@ -242,24 +352,119 @@ const TradingChartApp = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#111827" />
+      <StatusBar barStyle="light-content" backgroundColor="#0a0b14" />
+      
+      {/* Background gradient */}
+      <LinearGradient
+        colors={['#0a0b14', '#1a1b2e', '#16213e']}
+        style={StyleSheet.absoluteFillObject}
+      />
 
-      <View style={styles.header}>
-        <View style={styles.menuButton}>
-          <View style={styles.menuIcon} />
+      {/* Research Modal */}
+      <Modal visible={showResearchModal} animationType="slide" onRequestClose={() => setShowResearchModal(false)}>
+        <SafeAreaView style={styles.modalContainer}>
+          <LinearGradient colors={['#0a0b14', '#1a1b2e']} style={StyleSheet.absoluteFillObject} />
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Market Research</Text>
+            <TouchableOpacity onPress={() => setShowResearchModal(false)} style={styles.closeButton}>
+              <Ionicons name="close-circle" size={30} color="#00d4aa" />
+            </TouchableOpacity>
+          </View>
+          <MarketResearch onResearchComplete={handleResearchComplete} />
+        </SafeAreaView>
+      </Modal>
+
+      {/* Report Modal */}
+      <Modal visible={showReportModal} animationType="slide" onRequestClose={() => setShowReportModal(false)}>
+        <SafeAreaView style={styles.modalContainer}>
+          <LinearGradient colors={['#0a0b14', '#1a1b2e']} style={StyleSheet.absoluteFillObject} />
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Market Research Report</Text>
+            <TouchableOpacity onPress={() => setShowReportModal(false)} style={styles.closeButton}>
+              <Ionicons name="close-circle" size={30} color="#00d4aa" />
+            </TouchableOpacity>
+          </View>
+          <MarketResearchReportView report={researchReport} />
+          <View style={styles.footer}>
+            <TouchableOpacity style={styles.saveButton} onPress={handleSaveResearch}>
+              <LinearGradient
+                colors={['#00d4aa', '#00a8ff']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.saveButtonGradient}
+              >
+                <Ionicons name="save-outline" size={20} color="white" />
+                <Text style={styles.saveButtonText}>Save to History</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Header */}
+      <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity style={styles.menuButton}>
+            <View style={styles.menuIcon}>
+              <View style={styles.menuLine} />
+              <View style={styles.menuLine} />
+              <View style={styles.menuLine} />
+            </View>
+          </TouchableOpacity>
         </View>
-      </View>
+        <View style={styles.headerRight}>
+          <View style={styles.statusIndicator}>
+            <View style={styles.statusDot} />
+            <Text style={styles.statusText}>Live</Text>
+          </View>
+        </View>
+      </Animated.View>
 
-      <View style={styles.chartSection}>
+      {/* Chart Section */}
+      <Animated.View 
+        style={[
+          styles.chartSection, 
+          { 
+            opacity: fadeAnim,
+            transform: [{ scale: scaleAnim }]
+          }
+        ]}
+      >
         <CandlestickChart />
-      </View>
+      </Animated.View>
 
-      <View style={styles.titleSection}>
-        <Text style={styles.mainTitle}>Graph AI</Text>
-        <Text style={styles.subtitle}>
-          Upload a screenshot and get instant Trading Analysis
+      {/* Title Section */}
+      <Animated.View style={[styles.titleSection, { opacity: fadeAnim }]}>
+        <Text style={styles.mainTitle}>
+          Graph<Text style={styles.titleAccent}>AI</Text>
         </Text>
-      </View>
+        <Text style={styles.subtitle}>
+          Upload a screenshot and get instant AI-powered trading analysis
+        </Text>
+        <View style={styles.titleUnderline} />
+      </Animated.View>
+
+      {/* Paywall Modal */}
+      <Modal
+        visible={showPaywall}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowPaywall(false)}
+      >
+        <PaywallScreen
+          onDismiss={() => setShowPaywall(false)}
+          onPurchaseCompleted={(customerInfo: CustomerInfo) => {
+            setIsSubscribed(true);
+            setShowPaywall(false);
+          }}
+          onRestoreCompleted={(customerInfo: CustomerInfo) => {
+            if (typeof customerInfo.entitlements.active.pro !== 'undefined') {
+              setIsSubscribed(true);
+            }
+            setShowPaywall(false);
+          }}
+        />
+      </Modal>
 
       {/* Analysis Modal */}
       <Modal
@@ -268,30 +473,22 @@ const TradingChartApp = () => {
         visible={showAnalysisModal}
         onRequestClose={() => setShowAnalysisModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <View style={styles.analysisModalOverlay}>
+          <LinearGradient colors={['#0a0b14', '#1a1b2e']} style={StyleSheet.absoluteFillObject} />
+          <View style={styles.analysisModalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Trade Analysis Report</Text>
               <TouchableOpacity onPress={() => setShowAnalysisModal(false)} style={styles.closeButton}>
-                <Text style={{ color: 'white', fontSize: 18 }}>X</Text>
+                <Ionicons name="close-circle" size={30} color="#00d4aa" />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.modalBody}>
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
               {selectedImage && (
-                <Image source={{ uri: selectedImage.uri }} style={styles.imagePreview} resizeMode="contain" />
+                <View style={styles.imageContainer}>
+                  <Image source={{ uri: selectedImage.uri }} style={styles.imagePreview} resizeMode="contain" />
+                </View>
               )}
-              {analysisResult && (
-                <>
-                  <View style={styles.analysisSection}>
-                    <Text style={styles.analysisSectionTitle}>Chart Summary</Text>
-                    <Text style={styles.analysisContent}>{analysisResult.text}</Text>
-                  </View>
-                  <View style={styles.analysisSection}>
-                    <Text style={styles.analysisSectionTitle}>Trading Insights & Strategy</Text>
-                    <Text style={styles.analysisContent}>{analysisResult.answer}</Text>
-                  </View>
-                </>
-              )}
+              {analysisResult && <AnalysisView analysis={analysisResult} />}
             </ScrollView>
           </View>
         </View>
@@ -306,51 +503,100 @@ const TradingChartApp = () => {
       >
         <Pressable style={styles.bottomSheetOverlay} onPress={() => setShowImageSourceModal(false)}>
           <View style={styles.imageSourceModalContent}>
-            <Text style={styles.modalTitle}>Select Image Source</Text>
-            <TouchableOpacity style={styles.imageSourceButton} onPress={() => handleImageSourceSelect(ImageSource.CAMERA)}>
-              <Text style={styles.imageSourceButtonText}>Take Photo</Text>
+            <View style={styles.modalHandle} />
+            <Text style={styles.imageSourceTitle}>Select Image Source</Text>
+            
+            <TouchableOpacity 
+              style={styles.imageSourceButton} 
+              onPress={() => handleImageSourceSelect(ImageSource.CAMERA)}
+            >
+              <LinearGradient
+                colors={['#00d4aa', '#00a8ff']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.imageSourceButtonGradient}
+              >
+                <Ionicons name="camera" size={24} color="white" />
+                <Text style={styles.imageSourceButtonText}>Take Photo</Text>
+              </LinearGradient>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.imageSourceButton} onPress={() => handleImageSourceSelect(ImageSource.GALLERY)}>
-              <Text style={styles.imageSourceButtonText}>Choose from Gallery</Text>
+            
+            <TouchableOpacity 
+              style={styles.imageSourceButton} 
+              onPress={() => handleImageSourceSelect(ImageSource.GALLERY)}
+            >
+              <View style={styles.imageSourceButtonSecondary}>
+                <Ionicons name="images" size={24} color="#00d4aa" />
+                <Text style={styles.imageSourceButtonTextSecondary}>Choose from Gallery</Text>
+              </View>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.imageSourceButton} onPress={() => setShowImageSourceModal(false)}>
-              <Text style={[styles.imageSourceButtonText, { color: '#f472b6' }]}>Cancel</Text>
+            
+            <TouchableOpacity 
+              style={styles.imageSourceButton} 
+              onPress={() => setShowImageSourceModal(false)}
+            >
+              <View style={styles.imageSourceButtonCancel}>
+                <Text style={styles.imageSourceButtonTextCancel}>Cancel</Text>
+              </View>
             </TouchableOpacity>
           </View>
         </Pressable>
       </Modal>
 
-      <View style={styles.buttonSection}>
+      {/* Button Section */}
+      <Animated.View style={[styles.buttonSection, { opacity: fadeAnim }]}>
         <TouchableOpacity
           style={styles.uploadButton}
-          onPress={() => setShowImageSourceModal(true)}
+          onPress={() => {
+            if (isSubscribed) {
+              setShowPaywall(true);
+            } else {
+              setShowImageSourceModal(true);
+            }
+          }}
           disabled={analysisState === AnalysisState.LOADING}
         >
           <LinearGradient
-            colors={['#10b981', '#06b6d4']}
+            colors={analysisState === AnalysisState.LOADING ? ['#4b5563', '#6b7280'] : ['#00d4aa', '#00a8ff']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.gradientButton}
           >
             {analysisState === AnalysisState.LOADING ? (
-              <ActivityIndicator color="white" />
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator color="white" size="small" />
+                <Text style={styles.loadingText}>Analyzing...</Text>
+              </View>
             ) : (
               <>
+                <Ionicons name="cloud-upload-outline" size={24} color="white" style={styles.uploadIcon} />
                 <Text style={styles.uploadButtonTitle}>Upload a Chart</Text>
-                <Text style={styles.uploadButtonSubtitle}>Snap, Upload and Trade Smarter</Text>
+                <Text style={styles.uploadButtonSubtitle}>Snap, upload and trade smarter</Text>
               </>
             )}
           </LinearGradient>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.secondaryButton}>
-          <Text style={styles.secondaryButtonText}>Market Research</Text>
-        </TouchableOpacity>
+        <View style={styles.secondaryButtonsRow}>
+          <TouchableOpacity 
+            style={styles.researchButton} 
+            onPress={() => setShowResearchModal(true)} 
+            disabled={analysisState === AnalysisState.LOADING}
+          >
+            <View style={styles.researchButtonContent}>
+              <Ionicons name="search-outline" size={20} color="#00d4aa" />
+              <Text style={styles.researchButtonText}>Market Research</Text>
+            </View>
+          </TouchableOpacity>
 
-        <TouchableOpacity style={styles.proButton}>
-          <Text style={styles.proButtonText}>Try PRO for free</Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity style={styles.proButton} onPress={() => setShowPaywall(true)}>
+            <View style={styles.proButtonContent}>
+              <Ionicons name="star-outline" size={20} color="#ffd700" />
+              <Text style={styles.proButtonText}>Try Pro</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
     </SafeAreaView>
   );
 };
@@ -358,116 +604,263 @@ const TradingChartApp = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#111827',
+    backgroundColor: '#0a0b14',
   },
-  modalOverlay: {
+  modalContainer: {
     flex: 1,
-    backgroundColor: '#111827',
+    backgroundColor: '#0a0b14',
+  },
+  analysisModalOverlay: {
+    flex: 1,
+    backgroundColor: '#0a0b14',
   },
   bottomSheetOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     justifyContent: 'flex-end',
   },
-  modalContent: {
+  analysisModalContent: {
     flex: 1,
-    backgroundColor: '#111827',
+    backgroundColor: 'transparent',
     padding: 20,
-    paddingTop: 40, // Add padding for status bar
+    paddingTop: Platform.OS === 'ios' ? 50 : 30,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 20,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 212, 170, 0.2)',
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#f3f4f6',
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#ffffff',
+    letterSpacing: -0.5,
   },
   closeButton: {
     padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 212, 170, 0.1)',
   },
   modalBody: {
     flex: 1,
   },
-  imageSourceModalContent: {
-    backgroundColor: '#1f2937',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+  footer: {
     padding: 20,
-    gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 212, 170, 0.2)',
+    backgroundColor: 'rgba(26, 27, 46, 0.9)',
+  },
+  saveButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#00d4aa',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  saveButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 10,
+    letterSpacing: 0.5,
+  },
+  imageSourceModalContent: {
+    backgroundColor: '#1a1b2e',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    gap: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 16,
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  imageSourceTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 8,
+    letterSpacing: -0.3,
   },
   imageSourceButton: {
-    backgroundColor: '#374151',
-    padding: 15,
-    borderRadius: 10,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  imageSourceButtonGradient: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    gap: 12,
+  },
+  imageSourceButtonSecondary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 212, 170, 0.1)',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 170, 0.3)',
+    gap: 12,
+  },
+  imageSourceButtonCancel: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 107, 157, 0.1)',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 157, 0.3)',
   },
   imageSourceButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  imageSourceButtonTextSecondary: {
+    color: '#00d4aa',
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  imageSourceButtonTextCancel: {
+    color: '#ff6b9d',
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  imageContainer: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 20,
+    backgroundColor: 'rgba(26, 27, 46, 0.5)',
+    padding: 8,
   },
   imagePreview: {
     width: '100%',
     height: 220,
     borderRadius: 12,
-    marginBottom: 20,
-  },
-  image: {
-    width: '100%',
-    height: 250,
-    borderRadius: 8,
-  },
-  analysisSection: {
-    marginBottom: 24,
-  },
-  analysisSectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#22d3ee',
-    marginBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#374151',
-    paddingBottom: 8,
-  },
-  analysisContent: {
-    fontSize: 16,
-    color: '#e5e7eb',
-    lineHeight: 26,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    padding: 16,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   menuButton: {
-    padding: 8,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
   menuIcon: {
-    width: 24,
-    height: 18,
+    width: 20,
+    height: 16,
     justifyContent: 'space-between',
+  },
+  menuLine: {
+    height: 2,
+    backgroundColor: '#ffffff',
+    borderRadius: 1,
+  },
+  statusIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 212, 170, 0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 170, 0.3)',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    backgroundColor: '#00d4aa',
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  statusText: {
+    color: '#00d4aa',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.5,
   },
   chartSection: {
     paddingHorizontal: 24,
     paddingVertical: 32,
     alignItems: 'center',
+    marginTop: 10,
   },
   chartContainer: {
-    height: 200,
+    height: 220,
     width: width - 48,
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'flex-end',
+  },
+  chartBackground: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    backgroundColor: 'rgba(26, 27, 46, 0.3)',
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 170, 0.1)',
+  },
+  gridLines: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    right: 16,
+    bottom: 16,
+    justifyContent: 'space-between',
+  },
+  gridLine: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
   candlestickRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'center',
     marginBottom: 32,
+    zIndex: 2,
   },
   candlestick: {
     position: 'relative',
@@ -478,90 +871,153 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 2,
     borderRadius: 1,
+    shadowColor: '#00d4aa',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
   },
   candleBody: {
-    width: 16,
-    borderRadius: 2,
+    width: 18,
+    borderRadius: 3,
+    shadowColor: '#00d4aa',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
   trendLine: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
+    bottom: 16,
+    left: 16,
+    zIndex: 1,
   },
   titleSection: {
     alignItems: 'center',
     paddingHorizontal: 24,
-    marginBottom: 32,
+    marginBottom: 40,
+    marginTop: 20,
   },
   mainTitle: {
-    fontSize: 36,
-    fontWeight: 'bold',
+    fontSize: 42,
+    fontWeight: '800',
     color: '#ffffff',
     marginBottom: 12,
+    letterSpacing: -1,
+    textAlign: 'center',
+  },
+  titleAccent: {
+    color: '#00d4aa',
   },
   subtitle: {
     fontSize: 16,
-    color: '#9ca3af',
+    color: 'rgba(255, 255, 255, 0.7)',
     textAlign: 'center',
     lineHeight: 24,
+    marginBottom: 16,
+    paddingHorizontal: 20,
+    letterSpacing: 0.2,
+  },
+  titleUnderline: {
+    width: 60,
+    height: 4,
+    backgroundColor: '#00d4aa',
+    borderRadius: 2,
+    opacity: 0.8,
   },
   buttonSection: {
     paddingHorizontal: 24,
-    marginBottom: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    flex: 1,
+    justifyContent: 'flex-end',
   },
   uploadButton: {
-    marginBottom: 16,
-    borderRadius: 16,
-    shadowColor: '#10b981',
+    marginBottom: 20,
+    borderRadius: 20,
+    shadowColor: '#00d4aa',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.3,
     shadowRadius: 16,
-    elevation: 8,
+    elevation: 12,
     overflow: 'hidden',
   },
   gradientButton: {
     paddingVertical: 20,
     paddingHorizontal: 24,
-    borderRadius: 16,
+    borderRadius: 20,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadIcon: {
+    marginBottom: 8,
   },
   uploadButtonTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: 'white',
     marginBottom: 4,
+    letterSpacing: -0.3,
   },
   uploadButtonSubtitle: {
     color: 'rgba(255, 255, 255, 0.9)',
     fontSize: 14,
+    letterSpacing: 0.3,
   },
-  secondaryButton: {
-    backgroundColor: '#1f2937',
-    borderRadius: 12,
-    paddingVertical: 16,
+  loadingContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(156, 163, 175, 0.2)',
+    gap: 12,
   },
-  secondaryButtonText: {
-    fontSize: 18,
+  loadingText: {
+    color: 'white',
+    fontSize: 16,
     fontWeight: '600',
-    color: '#ffffff',
+  },
+  secondaryButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  researchButton: {
+    flex: 1,
+    backgroundColor: 'rgba(26, 27, 46, 0.8)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 170, 0.2)',
+    overflow: 'hidden',
+  },
+  researchButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  researchButtonText: {
+    color: '#00d4aa',
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
   proButton: {
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    flex: 1,
+    backgroundColor: 'rgba(255, 215, 0, 0.1)',
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
+    borderColor: 'rgba(255, 215, 0, 0.3)',
     borderRadius: 16,
-    paddingVertical: 16,
+    overflow: 'hidden',
+  },
+  proButtonContent: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    gap: 8,
   },
   proButtonText: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#10b981',
+    color: '#ffd700',
+    letterSpacing: 0.2,
   },
 });
 

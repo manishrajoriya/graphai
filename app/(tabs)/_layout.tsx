@@ -93,6 +93,21 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="history"
+        options={{
+          title: 'History',
+          tabBarIcon: ({ color, focused }) => (
+            <View style={[styles.iconContainer, focused && styles.activeIconContainer]}>
+              <Ionicons 
+                size={24} 
+                name="time-outline" 
+                color={focused ? '#ffffff' : color} 
+              />
+            </View>
+          ),
+        }}
+      />
     </Tabs>
   );
 }

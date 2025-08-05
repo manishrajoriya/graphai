@@ -1,19 +1,50 @@
 import axios from "axios";
 import * as FileSystem from "expo-file-system";
+import { FormattedAnalysis } from "../components/AnalysisView";
 
-
-//const SUPABASE_BASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL_FUNCTIONS;
-//const SUPABASE_BEARER_TOKEN = process.env.EXPO_PUBLIC_SUPABASE_BEARER_TOKEN;
-// console.log('GEMINI_SERVICE: Supabase base URL:', SUPABASE_BASE_URL);
-// console.log('GEMINI_SERVICE: Supabase bearer token:', SUPABASE_BEARER_TOKEN);
+export interface MarketResearchReport {
+  companyName: string;
+  symbol: string;
+  summary: string;
+  financials: {
+    revenue: string;
+    netIncome: string;
+    eps: string;
+    peRatio: string;
+  };
+  growthPotential: string;
+  competitors: string[];
+  risks: string;
+  recommendation: 'Buy' | 'Hold' | 'Sell';
+}
 
 const SUPABASE_BASE_URL = "https://mnjhkeygyczkziowlrab.supabase.co/functions/v1";
 const SUPABASE_BEARER_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1uamhrZXlneWN6a3ppb3dscmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE4ODQ4NzcsImV4cCI6MjA2NzQ2MDg3N30.9unaHI1ZXmSLMDf1szwmsR6oGXpDrn7-MTH-YXH5hng";
 
+export const getMarketResearch = async (companyName: string): Promise<MarketResearchReport> => {
+  const response = await axios.post(
+    `${SUPABASE_BASE_URL}/market-reserch`,
+    { companyName },
+    {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_BEARER_TOKEN}`
+      },
+    }
+  );
+
+  if (!response.data || typeof response.data.summary !== 'string') {
+    throw new Error('Invalid or incomplete data received from the server.');
+  }
+
+  return response.data;
+};
+
+const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
 export const GetChartAnalysis = async (
   imageUri: string,
-): Promise<{text: string, answer: string}> => {
+): Promise<FormattedAnalysis> => {
   try {
     console.log("GEMINI_SERVICE: Starting direct image processing with Gemini for URI:", imageUri);
     
@@ -39,15 +70,12 @@ export const GetChartAnalysis = async (
 
     console.log("GEMINI_SERVICE: Received response from Gemini image processing");
 
-    if (!response.data?.text || !response.data?.answer) {
-      console.warn("GEMINI_SERVICE: Invalid response from Gemini image processing");
-      throw new Error("Failed to process image with Gemini");
+    if (!response.data?.summary || !response.data?.signal) {
+      console.warn("GEMINI_SERVICE: Invalid response format from Gemini image processing", response.data);
+      throw new Error("Failed to process image with Gemini: Invalid format");
     }
 
-    return {
-      text: response.data.text,
-      answer: response.data.answer
-    };
+    return response.data;
   } catch (error) {
     console.error("GEMINI_SERVICE: Error processing image with Gemini:", error);
     if (axios.isAxiosError(error)) {

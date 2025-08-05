@@ -2,15 +2,32 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { Platform } from 'react-native';
+import Purchases, { LOG_LEVEL } from 'react-native-purchases';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { useEffect } from 'react';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
+
+  
+
+   useEffect(() => {
+    Purchases.setLogLevel(LOG_LEVEL.VERBOSE);
+
+    if (Platform.OS === 'ios') {
+       Purchases.configure({apiKey: 'REVENUECAT_PROJECT_APPLE_API_KEY'});
+    } else if (Platform.OS === 'android') {
+       Purchases.configure({apiKey: 'goog_iydCgkhgQZRptaixXfCECLSaWXC'});
+
+    }
+
+  }, []);
 
   if (!loaded) {
     // Async font loading only occurs in development.
