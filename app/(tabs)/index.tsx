@@ -157,6 +157,7 @@ enum ImageSource {
 
 const TradingChartApp = () => {
   const [researchReport, setResearchReport] = useState<MarketResearchReport | null>(null);
+  const [chatHistory, setChatHistory] = useState<any[]>([]);
   const [showReportModal, setShowReportModal] = useState<boolean>(false);
   const [selectedImage, setSelectedImage] = useState<ImageAsset | null>(null);
   const [analysisState, setAnalysisState] = useState<AnalysisState>(AnalysisState.IDLE);
@@ -207,10 +208,10 @@ const TradingChartApp = () => {
     });
   }, [fadeAnim, scaleAnim]);
 
-  const handleSaveResearch = async () => {
+  const handleSaveResearch = async (chatHistory: any[]) => {
     if (researchReport) {
       try {
-        await saveResearch(researchReport);
+        await saveResearch(researchReport, chatHistory);
         Alert.alert('Saved', 'The research report has been saved to your history.');
         setShowReportModal(false);
       } catch (error) {
@@ -220,8 +221,9 @@ const TradingChartApp = () => {
     }
   };
 
-  const handleResearchComplete = (report: MarketResearchReport) => {
+  const handleResearchComplete = (report: MarketResearchReport, chatHistory: any[]) => {
     setResearchReport(report);
+    setChatHistory(chatHistory);
     setShowReportModal(true);
   };
 
@@ -384,9 +386,13 @@ const TradingChartApp = () => {
               <Ionicons name="close-circle" size={30} color="#00d4aa" />
             </TouchableOpacity>
           </View>
-          <MarketResearchReportView report={researchReport} />
+          <MarketResearchReportView
+                  report={researchReport}
+                  chatHistory={chatHistory}
+                  onChatHistoryChange={setChatHistory}
+                />
           <View style={styles.footer}>
-            <TouchableOpacity style={styles.saveButton} onPress={handleSaveResearch}>
+            <TouchableOpacity style={styles.saveButton} onPress={() => handleSaveResearch(chatHistory)}>
               <LinearGradient
                 colors={['#00d4aa', '#00a8ff']}
                 start={{ x: 0, y: 0 }}

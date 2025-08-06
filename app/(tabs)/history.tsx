@@ -23,7 +23,7 @@ import {
 import AnalysisView, { FormattedAnalysis } from '../../components/AnalysisView';
 import MarketResearchReportView from '../../components/MarketResearchReportView';
 import { MarketResearchReport } from '../../services/aiServices';
-import { deleteHistoryItem, fetchHistory, HistoryItem } from '../../services/dbService';
+import { deleteHistoryItem, fetchHistory, HistoryItem, updateChatHistory } from '../../services/dbService';
 
 const { width } = Dimensions.get('window');
 
@@ -256,7 +256,8 @@ const HistoryScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'analysis' | 'research'>('analysis');
-  const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [selectedItem, setSelectedItem] = useState<(Omit<HistoryItem, 'data'> & { data: FormattedAnalysis | MarketResearchReport }) | null>(null);
+  const [modalChatHistory, setModalChatHistory] = useState<any[]>([]);
   const [isModalVisible, setIsModalVisible] = useState(false);
 
   // Animation values
@@ -295,9 +296,18 @@ const HistoryScreen = () => {
 
   const onRefresh = useCallback(() => { setRefreshing(true); loadHistory(); }, [loadHistory]);
 
+  const handleCloseModal = async () => {
+    if (selectedItem && modalChatHistory.length > 0) {
+      await updateChatHistory(selectedItem.id, modalChatHistory);
+    }
+    setIsModalVisible(false);
+  };
+
   const openModal = (item: HistoryItem) => {
-    const data = typeof item.data === 'string' ? JSON.parse(item.data) : item.data;
-    setSelectedItem({ ...item, data });
+    const chatHistory = item.chatHistory ? JSON.parse(item.chatHistory) : [];
+    setModalChatHistory(chatHistory);
+    const parsedData = typeof item.data === 'string' ? JSON.parse(item.data) : item.data;
+    setSelectedItem({ ...item, data: parsedData });
     setIsModalVisible(true);
   };
 
@@ -416,7 +426,7 @@ const HistoryScreen = () => {
     );
 
     return (
-      <Modal visible={isModalVisible} animationType="slide" onRequestClose={() => setIsModalVisible(false)}>
+      <Modal visible={isModalVisible} animationType="slide" onRequestClose={handleCloseModal}>
         <SafeAreaView style={styles.modalContainer}>
           <LinearGradient colors={['#0a0b14', '#1a1b2e']} style={StyleSheet.absoluteFillObject} />
           <ModalHeader />
@@ -424,7 +434,11 @@ const HistoryScreen = () => {
             {selectedItem?.data && (
               activeTab === 'analysis' ? 
               <AnalysisView analysis={selectedItem.data as FormattedAnalysis} /> : 
-              <MarketResearchReportView report={selectedItem.data as MarketResearchReport} />
+              <MarketResearchReportView
+              report={selectedItem.data as MarketResearchReport}
+              chatHistory={modalChatHistory}
+              onChatHistoryChange={setModalChatHistory}
+            />
             )}
           </ScrollView>
         </SafeAreaView>

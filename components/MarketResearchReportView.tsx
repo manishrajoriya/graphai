@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Modal,
   View,
@@ -7,18 +7,66 @@ import {
   ScrollView,
   TouchableOpacity,
   SafeAreaView,
+  FlatList,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { MarketResearchReport } from '../services/aiServices';
+import { MarketResearchReport, getAiChatResponse } from '../services/aiServices';
+
+interface ChatMessage {
+  text: string;
+  sender: 'user' | 'ai';
+}
 
 interface MarketResearchReportViewProps {
   report: MarketResearchReport | null;
+  chatHistory: ChatMessage[];
+  onChatHistoryChange: (messages: ChatMessage[]) => void;
 }
 
-const MarketResearchReportView: React.FC<MarketResearchReportViewProps> = ({ report }) => {
+const suggestionChips = [
+  'What are the key growth drivers for this company?',
+  'How does its growth compare to competitors?',
+  'What are the biggest risks to its growth?',
+  'What is the projected revenue growth for the next year?',
+];
+
+const MarketResearchReportView: React.FC<MarketResearchReportViewProps> = ({ report, chatHistory, onChatHistoryChange }) => {
+    const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
   if (!report) {
     return null;
   }
+
+  const handleSuggestionPress = (suggestion: string) => {
+    setInput(suggestion);
+    handleSend(suggestion);
+  };
+
+    const handleSend = async (message?: string) => {
+    const text = message || input;
+    if (text.trim() && !isLoading) {
+      const userMessage = { text, sender: 'user' as const };
+      const newMessages = [...chatHistory, userMessage];
+      onChatHistoryChange(newMessages);
+      setInput('');
+      setIsLoading(true);
+
+      try {
+        const aiResponse = await getAiChatResponse(text, report.companyName);
+        const aiMessage = { text: aiResponse, sender: 'ai' as const };
+        onChatHistoryChange([...newMessages, aiMessage]);
+      } catch (error) {
+        console.error('Error getting AI response:', error);
+        const errorMessage = { text: 'Sorry, something went wrong.', sender: 'ai' as const };
+        onChatHistoryChange([...newMessages, errorMessage]);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
 
   const getRecommendationStyle = (recommendation: string) => {
     switch (recommendation.toLowerCase()) {
@@ -82,6 +130,43 @@ const MarketResearchReportView: React.FC<MarketResearchReportViewProps> = ({ rep
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Risks</Text>
         <Text style={styles.paragraph}>{report.risks}</Text>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Ask AI</Text>
+        <FlatList
+          data={chatHistory}
+          renderItem={({ item }) => (
+            <View style={[styles.message, item.sender === 'user' ? styles.userMessage : styles.aiMessage]}>
+              <Text style={styles.messageText}>{item.text}</Text>
+            </View>
+          )}
+          keyExtractor={(item, index) => index.toString()}
+        />
+        {isLoading && <ActivityIndicator style={{ marginTop: 10 }} size="small" color="#22d3ee" />}
+        <View style={styles.suggestionChipsContainer}>
+          {suggestionChips.map((suggestion, index) => (
+            <TouchableOpacity
+              key={index}
+              style={styles.suggestionChip}
+              onPress={() => handleSuggestionPress(suggestion)}
+            >
+              <Text style={styles.suggestionChipText}>{suggestion}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            value={input}
+            onChangeText={setInput}
+            placeholder="Ask a question..."
+            placeholderTextColor="#9ca3af"
+          />
+                    <TouchableOpacity onPress={() => handleSend()} style={styles.sendButton}>
+            <Ionicons name="send" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
     </ScrollView>
   );
@@ -179,6 +264,62 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     marginLeft: 10,
+  },
+  message: {
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 10,
+    maxWidth: '80%',
+  },
+  userMessage: {
+    backgroundColor: '#22d3ee',
+    alignSelf: 'flex-end',
+  },
+  aiMessage: {
+    backgroundColor: '#374151',
+    alignSelf: 'flex-start',
+  },
+  messageText: {
+    color: '#fff',
+    fontSize: 16,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#374151',
+    paddingTop: 10,
+  },
+  input: {
+    flex: 1,
+    backgroundColor: '#1f2937',
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    color: '#f9fafb',
+    marginRight: 10,
+  },
+  sendButton: {
+    backgroundColor: '#22d3ee',
+    borderRadius: 20,
+    padding: 10,
+  },
+  suggestionChipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 10,
+  },
+  suggestionChip: {
+    backgroundColor: '#1f2937',
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    margin: 4,
+  },
+  suggestionChipText: {
+    color: '#9ca3af',
+    fontSize: 12,
   },
 });
 

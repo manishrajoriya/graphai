@@ -20,6 +20,7 @@ export async function initDB(): Promise<void> {
       type TEXT NOT NULL,
       title TEXT NOT NULL,
       data TEXT NOT NULL,
+      chatHistory TEXT,
       timestamp TEXT NOT NULL
     );
   `);
@@ -37,13 +38,14 @@ export const saveAnalysis = async (analysis: FormattedAnalysis) => {
   console.log('Analysis saved to history');
 };
 
-export const saveResearch = async (report: MarketResearchReport) => {
+export const saveResearch = async (report: MarketResearchReport, chatHistory: any[]) => {
   const db = await getDb();
   const data = JSON.stringify(report);
+  const chatHistoryStr = JSON.stringify(chatHistory);
   const timestamp = new Date().toISOString();
 
-  await db.runAsync('INSERT INTO history (type, title, data, timestamp) VALUES (?, ?, ?, ?)',
-    'research', report.companyName, data, timestamp
+  await db.runAsync('INSERT INTO history (type, title, data, timestamp, chatHistory) VALUES (?, ?, ?, ?, ?)',
+    'research', report.companyName, data, timestamp, chatHistoryStr
   );
   console.log('Research report saved to history');
 };
@@ -54,6 +56,7 @@ export interface HistoryItem {
   type: 'analysis' | 'research';
   title: string;
   data: string; // JSON string of FormattedAnalysis or MarketResearchReport
+  chatHistory?: string; // JSON string of chat messages
   timestamp: string;
 }
 
@@ -61,6 +64,13 @@ export interface HistoryItem {
 export const deleteHistoryItem = async (id: number): Promise<void> => {
   const db = await getDb();
   await db.runAsync('DELETE FROM history WHERE id = ?', id);
+};
+
+export const updateChatHistory = async (id: number, chatHistory: any[]): Promise<void> => {
+  const db = await getDb();
+  const chatHistoryStr = JSON.stringify(chatHistory);
+  await db.runAsync('UPDATE history SET chatHistory = ? WHERE id = ?', chatHistoryStr, id);
+  console.log(`Chat history updated for item ${id}`);
 };
 
 // Fetch all history from the database

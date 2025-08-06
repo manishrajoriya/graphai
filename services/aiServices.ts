@@ -17,9 +17,12 @@ export interface MarketResearchReport {
   risks: string;
   recommendation: 'Buy' | 'Hold' | 'Sell';
 }
+const SUPABASE_BASE_URL = process.env.SUPABASE_BASE_URL;
+const SUPABASE_BEARER_TOKEN = process.env.SUPABASE_BEARER_TOKEN;
 
-const SUPABASE_BASE_URL = "https://mnjhkeygyczkziowlrab.supabase.co/functions/v1";
-const SUPABASE_BEARER_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1uamhrZXlneWN6a3ppb3dscmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE4ODQ4NzcsImV4cCI6MjA2NzQ2MDg3N30.9unaHI1ZXmSLMDf1szwmsR6oGXpDrn7-MTH-YXH5hng";
+if (!SUPABASE_BASE_URL || !SUPABASE_BEARER_TOKEN) {
+  throw new Error('Missing environment variables: SUPABASE_BASE_URL or SUPABASE_BEARER_TOKEN');
+}
 
 export const getMarketResearch = async (companyName: string): Promise<MarketResearchReport> => {
   const response = await axios.post(
@@ -40,7 +43,22 @@ export const getMarketResearch = async (companyName: string): Promise<MarketRese
   return response.data;
 };
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL;
+export const getAiChatResponse = async (message: string, companyName: string): Promise<string> => {
+  const response = await axios.post(
+    `${SUPABASE_BASE_URL}/ai-chat`,
+    { message, companyName },
+    {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_BEARER_TOKEN}`
+      },
+    }
+  );
+
+  return response.data.reply;
+};
+
+
 
 export const GetChartAnalysis = async (
   imageUri: string,

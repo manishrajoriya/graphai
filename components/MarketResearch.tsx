@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,17 +10,29 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getMarketResearch, MarketResearchReport } from '../services/aiServices';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface MarketResearchProps {
-  onResearchComplete: (report: MarketResearchReport) => void;
+  onResearchComplete: (report: MarketResearchReport, chatHistory: any[]) => void;
 }
 
 const MarketResearch: React.FC<MarketResearchProps> = ({ onResearchComplete }) => {
   const [companyName, setCompanyName] = useState<string>('');
+
+  useEffect(() => {
+    const loadLastCompanyName = async () => {
+      const lastCompanyName = await AsyncStorage.getItem('lastCompanyName');
+      if (lastCompanyName) {
+        setCompanyName(lastCompanyName);
+      }
+    };
+    loadLastCompanyName();
+  }, []);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
 
-  const handleGenerateResearch = async () => {
+    const handleGenerateResearch = async () => {
+    await AsyncStorage.setItem('lastCompanyName', companyName);
     if (!companyName.trim()) {
       setError('Please enter a company name.');
       return;
@@ -29,7 +41,7 @@ const MarketResearch: React.FC<MarketResearchProps> = ({ onResearchComplete }) =
     setError('');
     try {
       const report = await getMarketResearch(companyName);
-      onResearchComplete(report);
+      onResearchComplete(report, []);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
       setError(errorMessage);
