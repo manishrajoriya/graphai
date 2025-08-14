@@ -19,7 +19,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import Purchases, { CustomerInfo } from 'react-native-purchases';
+import { CustomerInfo } from 'react-native-purchases';
 import Svg, { Defs, Path, Stop, LinearGradient as SvgLinearGradient } from 'react-native-svg';
 import AnalysisView, { FormattedAnalysis } from '../../components/AnalysisView';
 import MarketResearch from '../../components/MarketResearch';
@@ -27,6 +27,7 @@ import MarketResearchReportView from '../../components/MarketResearchReportView'
 import PaywallScreen from '../../components/Paywall';
 import { GetChartAnalysis, MarketResearchReport } from '../../services/aiServices';
 import { initDB, saveAnalysis, saveResearch } from '../../services/dbService';
+import { default as SubscriptionService, default as subscriptionService } from '../../services/subscriptionService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -190,11 +191,10 @@ const TradingChartApp = () => {
     ]).start();
 
     const checkSubscription = async () => {
-      try {
-        const customerInfo = await Purchases.getCustomerInfo();
-        if (typeof customerInfo.entitlements.active.pro !== 'undefined') {
-          setIsSubscribed(true);
-        }
+      try { 
+        const status = await subscriptionService.checkSubscriptionStatus();
+        const hasAccess = status.isSubscribed
+        setIsSubscribed(hasAccess);
       } catch (e) {
         console.error('Error checking subscription', e);
       }
@@ -327,6 +327,18 @@ const TradingChartApp = () => {
   const analyzeImage = async (imageUri: string) => {
     if (!imageUri) return;
 
+    // Verify subscription before allowing analysis
+    try {
+      const { isSubscribed } = await SubscriptionService.checkSubscriptionStatus();
+      if (!isSubscribed) {
+        setShowPaywall(true);
+        return;
+      }
+    } catch (e) {
+      setShowPaywall(true);
+      return;
+    }
+
     setAnalysisState(AnalysisState.LOADING);
     setError(null);
     
@@ -372,7 +384,10 @@ const TradingChartApp = () => {
               <Ionicons name="close-circle" size={30} color="#00d4aa" />
             </TouchableOpacity>
           </View>
-          <MarketResearch onResearchComplete={handleResearchComplete} />
+          <MarketResearch 
+            onResearchComplete={handleResearchComplete}
+            onRequireSubscription={() => setShowPaywall(true)}
+          />
         </SafeAreaView>
       </Modal>
 
@@ -390,6 +405,7 @@ const TradingChartApp = () => {
                   report={researchReport}
                   chatHistory={chatHistory}
                   onChatHistoryChange={setChatHistory}
+                  onRequireSubscription={() => setShowPaywall(true)}
                 />
           <View style={styles.footer}>
             <TouchableOpacity style={styles.saveButton} onPress={() => handleSaveResearch(chatHistory)}>
@@ -410,19 +426,25 @@ const TradingChartApp = () => {
       {/* Header */}
       <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity style={styles.menuButton}>
+          {/* <TouchableOpacity style={styles.menuButton}>
             <View style={styles.menuIcon}>
               <View style={styles.menuLine} />
               <View style={styles.menuLine} />
               <View style={styles.menuLine} />
             </View>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
         </View>
         <View style={styles.headerRight}>
           <View style={styles.statusIndicator}>
             <View style={styles.statusDot} />
             <Text style={styles.statusText}>Live</Text>
           </View>
+          {isSubscribed && (
+            <View style={styles.proBadge}>
+              <Ionicons name="star" size={14} color="#ffd700" />
+              <Text style={styles.proBadgeText}>Pro Active</Text>
+            </View>
+          )}
         </View>
       </Animated.View>
 
@@ -554,11 +576,8 @@ const TradingChartApp = () => {
         <TouchableOpacity
           style={styles.uploadButton}
           onPress={() => {
-            if (isSubscribed) {
-              setShowPaywall(true);
-            } else {
-              setShowImageSourceModal(true);
-            }
+            // Let user pick/take image first; we'll gate in analyzeImage()
+            setShowImageSourceModal(true);
           }}
           disabled={analysisState === AnalysisState.LOADING}
         >
@@ -594,13 +613,19 @@ const TradingChartApp = () => {
               <Text style={styles.researchButtonText}>Market Research</Text>
             </View>
           </TouchableOpacity>
-
-          <TouchableOpacity style={styles.proButton} onPress={() => setShowPaywall(true)}>
-            <View style={styles.proButtonContent}>
-              <Ionicons name="star-outline" size={20} color="#ffd700" />
-              <Text style={styles.proButtonText}>Try Pro</Text>
+          {isSubscribed ? (
+            <View style={styles.subscribedPill}>
+              <Ionicons name="checkmark-circle" size={18} color="#10b981" />
+              <Text style={styles.subscribedPillText}>Pro Active</Text>
             </View>
-          </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.proButton} onPress={() => setShowPaywall(true)}>
+              <View style={styles.proButtonContent}>
+                <Ionicons name="star-outline" size={20} color="#ffd700" />
+                <Text style={styles.proButtonText}>Try Pro</Text>
+              </View>
+            </TouchableOpacity>
+          )}
         </View>
       </Animated.View>
     </SafeAreaView>
@@ -760,6 +785,23 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.3,
   },
+  subscribedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.35)',
+  },
+  subscribedPillText: {
+    color: '#10b981',
+    fontSize: 14,
+    fontWeight: '700',
+    marginLeft: 8,
+    letterSpacing: 0.2,
+  },
   imageContainer: {
     borderRadius: 16,
     overflow: 'hidden',
@@ -777,7 +819,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingTop: 16,
+    paddingTop: 27,
     paddingBottom: 8,
   },
   headerLeft: {
@@ -825,6 +867,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     letterSpacing: 0.5,
+  },
+  proBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 215, 0, 0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 215, 0, 0.35)',
+    marginLeft: 10,
+  },
+  proBadgeText: {
+    color: '#ffd700',
+    fontSize: 12,
+    fontWeight: '700',
+    marginLeft: 6,
+    letterSpacing: 0.3,
   },
   chartSection: {
     paddingHorizontal: 24,

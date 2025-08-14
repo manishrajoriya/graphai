@@ -1,13 +1,11 @@
+import { useColorScheme } from '@/hooks/useColorScheme';
+import SubscriptionService from '@/services/subscriptionService';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Platform } from 'react-native';
-import Purchases, { LOG_LEVEL } from 'react-native-purchases';
-import 'react-native-reanimated';
-
-import { useColorScheme } from '@/hooks/useColorScheme';
 import { useEffect } from 'react';
+import 'react-native-reanimated';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -18,15 +16,8 @@ export default function RootLayout() {
   
 
    useEffect(() => {
-    Purchases.setLogLevel(LOG_LEVEL.VERBOSE);
-
-    if (Platform.OS === 'ios') {
-       Purchases.configure({apiKey: 'REVENUECAT_PROJECT_APPLE_API_KEY'});
-    } else if (Platform.OS === 'android') {
-       Purchases.configure({apiKey: 'goog_iydCgkhgQZRptaixXfCECLSaWXC'});
-
-    }
-
+    SubscriptionService.initialize();
+   
   }, []);
 
   if (!loaded) {

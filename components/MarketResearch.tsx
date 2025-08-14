@@ -1,22 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useEffect, useState } from 'react';
 import {
-  View,
+  ActivityIndicator,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-  Alert,
+  View
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { getMarketResearch, MarketResearchReport } from '../services/aiServices';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import subscriptionService from '../services/subscriptionService';
 
 interface MarketResearchProps {
   onResearchComplete: (report: MarketResearchReport, chatHistory: any[]) => void;
+  onRequireSubscription?: () => void;
 }
 
-const MarketResearch: React.FC<MarketResearchProps> = ({ onResearchComplete }) => {
+const MarketResearch: React.FC<MarketResearchProps> = ({ onResearchComplete, onRequireSubscription }) => {
   const [companyName, setCompanyName] = useState<string>('');
 
   useEffect(() => {
@@ -35,6 +36,19 @@ const MarketResearch: React.FC<MarketResearchProps> = ({ onResearchComplete }) =
     await AsyncStorage.setItem('lastCompanyName', companyName);
     if (!companyName.trim()) {
       setError('Please enter a company name.');
+      return;
+    }
+    // Check subscription before making AI request
+    try {
+      const status = await subscriptionService.checkSubscriptionStatus();
+      const hasAccess = status.isSubscribed
+      if (!hasAccess) {
+        onRequireSubscription?.();
+        return;
+      }
+    } catch (e) {
+      // If we fail to check, block the request and ask user to subscribe
+      onRequireSubscription?.();
       return;
     }
     setLoading(true);
