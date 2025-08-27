@@ -25,8 +25,10 @@ import AnalysisView, { FormattedAnalysis } from '../../components/AnalysisView';
 import MarketResearch from '../../components/MarketResearch';
 import MarketResearchReportView from '../../components/MarketResearchReportView';
 import PaywallScreen from '../../components/Paywall';
+import { useAnalytics } from '../../hooks/useAnalytics';
 import { GetChartAnalysis, MarketResearchReport } from '../../services/aiServices';
-import { initDB, saveAnalysis, saveResearch } from '../../services/dbService';
+import { initDB, saveAnalysis, saveResearch, trackAIRequest } from '../../services/dbService';
+import { resolveUserId } from '../../services/userId';
 import { default as SubscriptionService, default as subscriptionService } from '../../services/subscriptionService';
 
 const { width, height } = Dimensions.get('window');
@@ -170,6 +172,9 @@ const TradingChartApp = () => {
   const [showPaywall, setShowPaywall] = useState<boolean>(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
 
+  // Analytics tracking
+  const { trackButton } = useAnalytics();
+
   // Animated values for micro-interactions
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
   const scaleAnim = React.useRef(new Animated.Value(0.9)).current;
@@ -212,6 +217,7 @@ const TradingChartApp = () => {
     if (researchReport) {
       try {
         await saveResearch(researchReport, chatHistory);
+        trackButton('save_research', { symbol: researchReport.symbol });
         Alert.alert('Saved', 'The research report has been saved to your history.');
         setShowReportModal(false);
       } catch (error) {
@@ -225,6 +231,7 @@ const TradingChartApp = () => {
     setResearchReport(report);
     setChatHistory(chatHistory);
     setShowReportModal(true);
+    trackButton('market_research_complete', { symbol: report.symbol, companyName: report.companyName });
   };
 
   // Permission handling
@@ -327,9 +334,21 @@ const TradingChartApp = () => {
   const analyzeImage = async (imageUri: string) => {
     if (!imageUri) return;
 
+    const startTime = Date.now();
+    let userId: string;
+    let isPremiumUser = false;
+
+    try {
+      userId = await resolveUserId();
+    } catch (e) {
+      console.error('Failed to resolve user ID:', e);
+      userId = 'unknown';
+    }
+
     // Verify subscription before allowing analysis
     try {
       const { isSubscribed } = await SubscriptionService.checkSubscriptionStatus();
+      isPremiumUser = isSubscribed;
       if (!isSubscribed) {
         setShowPaywall(true);
         return;
@@ -344,6 +363,8 @@ const TradingChartApp = () => {
     
     try {
       const analysisResultJson = await GetChartAnalysis(imageUri);
+      const processingTime = Date.now() - startTime;
+      
       if (analysisResultJson && analysisResultJson.summary) {
         const fullAnalysis: FormattedAnalysis = { 
           ...analysisResultJson,
@@ -352,15 +373,38 @@ const TradingChartApp = () => {
         setAnalysisResult(fullAnalysis);
         setAnalysisState(AnalysisState.SUCCESS);
         setShowAnalysisModal(true);
+        trackButton('chart_analysis_complete', { trend: fullAnalysis.trend });
         await saveAnalysis(fullAnalysis);
+
+        // Track AI request for premium users
+        await trackAIRequest({
+          user_id: userId,
+          request_type: 'chart_analysis',
+          is_premium_user: isPremiumUser,
+          request_data: { imageUri },
+          response_data: { trend: fullAnalysis.trend, summary: fullAnalysis.summary },
+          processing_time_ms: processingTime,
+          success: true
+        });
       } else {
         throw new Error('Received invalid analysis format from server.');
       }
     } catch (error) {
+      const processingTime = Date.now() - startTime;
       console.error('Error analyzing image:', error);
       setError('Failed to analyze the chart. Please try again with a clearer image.');
       setAnalysisState(AnalysisState.ERROR);
       Alert.alert('Analysis Error', 'Failed to analyze the chart. Please try again with a clearer image.');
+
+      // Track failed AI request
+      await trackAIRequest({
+        user_id: userId,
+        request_type: 'chart_analysis',
+        is_premium_user: isPremiumUser,
+        request_data: { imageUri },
+        processing_time_ms: processingTime,
+        success: false
+      });
     } 
   };
 
@@ -536,7 +580,10 @@ const TradingChartApp = () => {
             
             <TouchableOpacity 
               style={styles.imageSourceButton} 
-              onPress={() => handleImageSourceSelect(ImageSource.CAMERA)}
+              onPress={() => {
+                trackButton('take_photo');
+                handleImageSourceSelect(ImageSource.CAMERA);
+              }}
             >
               <LinearGradient
                 colors={['#00d4aa', '#00a8ff']}
@@ -551,7 +598,10 @@ const TradingChartApp = () => {
             
             <TouchableOpacity 
               style={styles.imageSourceButton} 
-              onPress={() => handleImageSourceSelect(ImageSource.GALLERY)}
+              onPress={() => {
+                trackButton('choose_gallery');
+                handleImageSourceSelect(ImageSource.GALLERY);
+              }}
             >
               <View style={styles.imageSourceButtonSecondary}>
                 <Ionicons name="images" size={24} color="#00d4aa" />
@@ -576,6 +626,7 @@ const TradingChartApp = () => {
         <TouchableOpacity
           style={styles.uploadButton}
           onPress={() => {
+            trackButton('upload_chart', { analysisState });
             // Let user pick/take image first; we'll gate in analyzeImage()
             setShowImageSourceModal(true);
           }}
@@ -605,7 +656,10 @@ const TradingChartApp = () => {
         <View style={styles.secondaryButtonsRow}>
           <TouchableOpacity 
             style={styles.researchButton} 
-            onPress={() => setShowResearchModal(true)} 
+            onPress={() => {
+              trackButton('market_research');
+              setShowResearchModal(true);
+            }} 
             disabled={analysisState === AnalysisState.LOADING}
           >
             <View style={styles.researchButtonContent}>
@@ -619,7 +673,10 @@ const TradingChartApp = () => {
               <Text style={styles.subscribedPillText}>Pro Active</Text>
             </View>
           ) : (
-            <TouchableOpacity style={styles.proButton} onPress={() => setShowPaywall(true)}>
+            <TouchableOpacity style={styles.proButton} onPress={() => {
+              trackButton('try_pro');
+              setShowPaywall(true);
+            }}>
               <View style={styles.proButtonContent}>
                 <Ionicons name="star-outline" size={20} color="#ffd700" />
                 <Text style={styles.proButtonText}>Try Pro</Text>

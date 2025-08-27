@@ -79,6 +79,21 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="features"
+        options={{
+          title: 'Features',
+          tabBarIcon: ({ color, focused }) => (
+            <View style={[styles.iconContainer, focused && styles.activeIconContainer]}>
+              <Ionicons 
+                size={24} 
+                name="apps" 
+                color={focused ? '#ffffff' : color} 
+              />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="history"
         options={{
           title: 'History',

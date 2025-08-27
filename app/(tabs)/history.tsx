@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 import AnalysisView, { FormattedAnalysis } from '../../components/AnalysisView';
 import MarketResearchReportView from '../../components/MarketResearchReportView';
+import { useAnalytics } from '../../hooks/useAnalytics';
 import { MarketResearchReport } from '../../services/aiServices';
 import { deleteHistoryItem, fetchHistory, HistoryItem, updateChatHistory } from '../../services/dbService';
 
@@ -260,6 +261,9 @@ const HistoryScreen = () => {
   const [modalChatHistory, setModalChatHistory] = useState<any[]>([]);
   const [isModalVisible, setIsModalVisible] = useState(false);
 
+  // Analytics tracking
+  const { trackButton } = useAnalytics();
+
   // Animation values
   const headerFadeAnim = React.useRef(new Animated.Value(0)).current;
   const tabSlideAnim = React.useRef(new Animated.Value(-50)).current;
@@ -309,12 +313,15 @@ const HistoryScreen = () => {
     const parsedData = typeof item.data === 'string' ? JSON.parse(item.data) : item.data;
     setSelectedItem({ ...item, data: parsedData });
     setIsModalVisible(true);
+    trackButton('view_history_item', { type: item.type, itemId: item.id });
   };
 
   const handleDelete = async (id: number) => {
     try {
+      const itemToDelete = history.find(item => item.id === id);
       await deleteHistoryItem(id);
       setHistory(prevHistory => prevHistory.filter(item => item.id !== id));
+      trackButton('delete_history_item', { type: itemToDelete?.type, itemId: id });
       Alert.alert('Deleted', 'The item has been removed from your history.');
     } catch (error) {
       console.error('Failed to delete history item:', error);
@@ -501,7 +508,10 @@ const HistoryScreen = () => {
           <View style={styles.tabBackground}>
             <TouchableOpacity 
               style={[styles.tabButton, activeTab === 'analysis' && styles.activeTabButton]}
-              onPress={() => setActiveTab('analysis')}
+              onPress={() => {
+                trackButton('switch_tab', { tab: 'analysis' });
+                setActiveTab('analysis');
+              }}
             >
               {activeTab === 'analysis' && (
                 <LinearGradient
@@ -524,7 +534,10 @@ const HistoryScreen = () => {
             
             <TouchableOpacity 
               style={[styles.tabButton, activeTab === 'research' && styles.activeTabButton]}
-              onPress={() => setActiveTab('research')}
+              onPress={() => {
+                trackButton('switch_tab', { tab: 'research' });
+                setActiveTab('research');
+              }}
             >
               {activeTab === 'research' && (
                 <LinearGradient

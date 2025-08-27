@@ -10,7 +10,9 @@ import {
   View
 } from 'react-native';
 import { getMarketResearch, MarketResearchReport } from '../services/aiServices';
+import { trackAIRequest } from '../services/dbService';
 import subscriptionService from '../services/subscriptionService';
+import { resolveUserId } from '../services/userId';
 
 interface MarketResearchProps {
   onResearchComplete: (report: MarketResearchReport, chatHistory: any[]) => void;
@@ -38,11 +40,23 @@ const MarketResearch: React.FC<MarketResearchProps> = ({ onResearchComplete, onR
       setError('Please enter a company name.');
       return;
     }
+
+    const startTime = Date.now();
+    let userId: string;
+    let isPremiumUser = false;
+
+    try {
+      userId = await resolveUserId();
+    } catch (e) {
+      console.error('Failed to resolve user ID:', e);
+      userId = 'unknown';
+    }
+
     // Check subscription before making AI request
     try {
       const status = await subscriptionService.checkSubscriptionStatus();
-      const hasAccess = status.isSubscribed
-      if (!hasAccess) {
+      isPremiumUser = status.isSubscribed;
+      if (!isPremiumUser) {
         onRequireSubscription?.();
         return;
       }
@@ -55,11 +69,35 @@ const MarketResearch: React.FC<MarketResearchProps> = ({ onResearchComplete, onR
     setError('');
     try {
       const report = await getMarketResearch(companyName);
+      const processingTime = Date.now() - startTime;
+      
       onResearchComplete(report, []);
+
+      // Track AI request for premium users
+      await trackAIRequest({
+        user_id: userId,
+        request_type: 'market_research',
+        is_premium_user: isPremiumUser,
+        request_data: { companyName },
+        response_data: { symbol: report.symbol, companyName: report.companyName },
+        processing_time_ms: processingTime,
+        success: true
+      });
     } catch (err) {
+      const processingTime = Date.now() - startTime;
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
       setError(errorMessage);
       console.error('Market research failed:', err);
+
+      // Track failed AI request
+      await trackAIRequest({
+        user_id: userId,
+        request_type: 'market_research',
+        is_premium_user: isPremiumUser,
+        request_data: { companyName },
+        processing_time_ms: processingTime,
+        success: false
+      });
     } finally {
       setLoading(false);
     }
