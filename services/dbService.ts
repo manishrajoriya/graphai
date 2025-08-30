@@ -50,7 +50,7 @@ export const saveResearch = async (report: MarketResearchReport, chatHistory: an
   await db.runAsync('INSERT INTO history (type, title, data, timestamp, chatHistory) VALUES (?, ?, ?, ?, ?)',
     'research', report.companyName, data, timestamp, chatHistoryStr
   );
-  console.log('Research report saved to history');
+  console.log('Research report saved to history with chat:', chatHistory.length, 'messages');
 };
 
 // Define a type for the history items returned from the DB

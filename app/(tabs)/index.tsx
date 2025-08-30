@@ -216,9 +216,10 @@ const TradingChartApp = () => {
   const handleSaveResearch = async (chatHistory: any[]) => {
     if (researchReport) {
       try {
+        console.log('Saving research with chat history:', chatHistory);
         await saveResearch(researchReport, chatHistory);
         trackButton('save_research', { symbol: researchReport.symbol });
-        Alert.alert('Saved', 'The research report has been saved to your history.');
+        Alert.alert('Saved', 'The research report and chat history have been saved.');
         setShowReportModal(false);
       } catch (error) {
         console.error('Failed to save research report:', error);
@@ -449,6 +450,7 @@ const TradingChartApp = () => {
                   report={researchReport}
                   chatHistory={chatHistory}
                   onChatHistoryChange={setChatHistory}
+                  onSaveReport={handleSaveResearch}
                   onRequireSubscription={() => setShowPaywall(true)}
                 />
           <View style={styles.footer}>
@@ -719,6 +721,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
     paddingBottom: 15,
+    paddingHorizontal: 0,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0, 212, 170, 0.2)',
   },
@@ -737,7 +740,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   footer: {
-    padding: 20,
+    paddingHorizontal: 0,
+    paddingVertical: 20,
     borderTopWidth: 1,
     borderTopColor: 'rgba(0, 212, 170, 0.2)',
     backgroundColor: 'rgba(26, 27, 46, 0.9)',

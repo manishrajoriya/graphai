@@ -445,6 +445,13 @@ const HistoryScreen = () => {
               report={selectedItem.data as MarketResearchReport}
               chatHistory={modalChatHistory}
               onChatHistoryChange={setModalChatHistory}
+              onSaveReport={async (updatedChatHistory) => {
+                // Update chat history in database when saved from history modal
+                if (selectedItem) {
+                  await updateChatHistory(selectedItem.id, updatedChatHistory);
+                  setModalChatHistory(updatedChatHistory);
+                }
+              }}
             />
             )}
           </ScrollView>
@@ -877,7 +884,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
+    padding: 0,
     paddingTop: Platform.OS === 'ios' ? 0 : 20,
   },
   modalTitle: {
@@ -896,7 +903,7 @@ const styles = StyleSheet.create({
   },
   modalScrollView: {
     flex: 1,
-    padding: 20,
+    padding: 0,
   },
 });
 
