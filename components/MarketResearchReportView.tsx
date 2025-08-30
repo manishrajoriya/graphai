@@ -61,32 +61,9 @@ const MarketResearchReportView: React.FC<MarketResearchReportViewProps> = ({
   // Initialize session when report is available
   React.useEffect(() => {
     if (report && !sessionData) {
-      const autoSaveCallback = (updatedData: any) => {
-        if (onSaveReport && updatedData.conversationHistory.length > 0) {
-          const chatMessages: ChatMessage[] = [];
-          updatedData.conversationHistory.forEach((conv: any, index: number) => {
-            chatMessages.push({
-              id: `user_${index}`,
-              text: conv.message,
-              sender: 'user' as const,
-              timestamp: conv.timestamp
-            });
-            chatMessages.push({
-              id: `ai_${index}`,
-              text: conv.reply,
-              sender: 'ai' as const,
-              timestamp: conv.timestamp
-            });
-          });
-          onSaveReport(chatMessages);
-        }
-      };
-      
       initializeSession(report.companyName, report);
-      
-      // Auto-save will be handled through the onContextUpdate callback
     }
-  }, [report, sessionData, onSaveReport]);
+  }, [report, sessionData, initializeSession]);
 
   // Update context when report changes
   React.useEffect(() => {
@@ -94,6 +71,28 @@ const MarketResearchReportView: React.FC<MarketResearchReportViewProps> = ({
       updateMarketResearchContext(report, report.companyName);
     }
   }, [report?.companyName, report?.symbol, sessionData?.sessionId]);
+
+  // Auto-save chat history whenever conversation history changes
+  React.useEffect(() => {
+    if (sessionData?.conversationHistory && sessionData.conversationHistory.length > 0 && onSaveReport) {
+      const chatMessages: ChatMessage[] = [];
+      sessionData.conversationHistory.forEach((conv, index) => {
+        chatMessages.push({
+          id: `user_${index}`,
+          text: conv.message,
+          sender: 'user' as const,
+          timestamp: conv.timestamp
+        });
+        chatMessages.push({
+          id: `ai_${index}`,
+          text: conv.reply,
+          sender: 'ai' as const,
+          timestamp: conv.timestamp
+        });
+      });
+      onSaveReport(chatMessages);
+    }
+  }, [sessionData?.conversationHistory, onSaveReport]);
 
   // Memoized recommendation style function
   const getRecommendationStyle = useCallback((recommendation: string) => {
@@ -166,14 +165,12 @@ const MarketResearchReportView: React.FC<MarketResearchReportViewProps> = ({
         </View>
       </View>
 
-      <KeyboardAvoidingView 
-        style={styles.container} 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
+      <View style={styles.container}>
         <ScrollView 
           contentContainerStyle={styles.scrollContent} 
           showsVerticalScrollIndicator={false}
           style={styles.scrollView}
+          keyboardShouldPersistTaps="handled"
         >
         {/* Executive Summary Card */}
         <View style={styles.summaryCard}>
@@ -276,63 +273,11 @@ const MarketResearchReportView: React.FC<MarketResearchReportViewProps> = ({
             <ChatWithContext
               companyName={report.companyName}
               marketResearchData={report}
-              onContextUpdate={(hasContext) => {
-                // Auto-save chat history when new messages are added
-                if (sessionData?.conversationHistory && sessionData.conversationHistory.length > 0 && onSaveReport) {
-                  const chatMessages: ChatMessage[] = [];
-                  sessionData.conversationHistory.forEach((conv, index) => {
-                    chatMessages.push({
-                      id: `user_${index}`,
-                      text: conv.message,
-                      sender: 'user' as const,
-                      timestamp: conv.timestamp
-                    });
-                    chatMessages.push({
-                      id: `ai_${index}`,
-                      text: conv.reply,
-                      sender: 'ai' as const,
-                      timestamp: conv.timestamp
-                    });
-                  });
-                  onSaveReport(chatMessages);
-                }
-              }}
             />
           </View>
-          
-          {/* Save Button */}
-          {sessionData?.conversationHistory && sessionData.conversationHistory.length > 0 && onSaveReport && (
-            <TouchableOpacity 
-              style={styles.saveButton}
-              onPress={() => {
-                // Convert session conversation history to ChatMessage format for saving
-                const chatMessages: ChatMessage[] = [];
-                sessionData.conversationHistory.forEach((conv, index) => {
-                  // Add user message
-                  chatMessages.push({
-                    id: `user_${index}`,
-                    text: conv.message,
-                    sender: 'user' as const,
-                    timestamp: conv.timestamp
-                  });
-                  // Add AI reply
-                  chatMessages.push({
-                    id: `ai_${index}`,
-                    text: conv.reply,
-                    sender: 'ai' as const,
-                    timestamp: conv.timestamp
-                  });
-                });
-                onSaveReport(chatMessages);
-              }}
-            >
-              <Ionicons name="save-outline" size={20} color="#22d3ee" />
-              <Text style={styles.saveButtonText}>Save Chat History</Text>
-            </TouchableOpacity>
-          )}
         </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 };
@@ -632,32 +577,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#cbd5e1',
     letterSpacing: 0.1,
-  },
-  // Save Button
-  saveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(34, 211, 238, 0.1)',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderRadius: 0,
-    borderWidth: 0,
-    borderTopWidth: 2,
-    borderTopColor: '#22d3ee',
-    marginBottom: 0,
-    marginHorizontal: 0,
-    gap: 10,
-    shadowColor: '#22d3ee',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-  },
-  saveButtonText: {
-    color: '#22d3ee',
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.3,
   },
   section: {
     marginBottom: 28,

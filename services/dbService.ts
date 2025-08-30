@@ -41,16 +41,18 @@ export const saveAnalysis = async (analysis: FormattedAnalysis) => {
   console.log('Analysis saved to history');
 };
 
-export const saveResearch = async (report: MarketResearchReport, chatHistory: any[]) => {
+export const saveResearch = async (report: MarketResearchReport, chatHistory: any[] = []) => {
   const db = await getDb();
   const data = JSON.stringify(report);
   const chatHistoryStr = JSON.stringify(chatHistory);
   const timestamp = new Date().toISOString();
 
-  await db.runAsync('INSERT INTO history (type, title, data, timestamp, chatHistory) VALUES (?, ?, ?, ?, ?)',
+  const result = await db.runAsync('INSERT INTO history (type, title, data, timestamp, chatHistory) VALUES (?, ?, ?, ?, ?)',
     'research', report.companyName, data, timestamp, chatHistoryStr
   );
+  
   console.log('Research report saved to history with chat:', chatHistory.length, 'messages');
+  return result.lastInsertRowId;
 };
 
 // Define a type for the history items returned from the DB
@@ -73,7 +75,106 @@ export const updateChatHistory = async (id: number, chatHistory: any[]): Promise
   const db = await getDb();
   const chatHistoryStr = JSON.stringify(chatHistory);
   await db.runAsync('UPDATE history SET chatHistory = ? WHERE id = ?', chatHistoryStr, id);
-  console.log(`Chat history updated for item ${id}`);
+  console.log(`Chat history updated for item ${id} with ${chatHistory.length} messages`);
+};
+
+// Save chat message for market research (for real-time saving)
+export const saveMarketResearchChat = async (researchId: number, message: any): Promise<void> => {
+  const db = await getDb();
+  
+  // Get current chat history
+  const result = await db.getFirstAsync<{ chatHistory: string }>('SELECT chatHistory FROM history WHERE id = ?', researchId);
+  
+  let currentChatHistory: any[] = [];
+  if (result?.chatHistory) {
+    try {
+      currentChatHistory = JSON.parse(result.chatHistory);
+    } catch (error) {
+      console.error('Error parsing existing chat history:', error);
+    }
+  }
+  
+  // Add new message
+  currentChatHistory.push(message);
+  
+  // Update database
+  const chatHistoryStr = JSON.stringify(currentChatHistory);
+  await db.runAsync('UPDATE history SET chatHistory = ? WHERE id = ?', chatHistoryStr, researchId);
+  console.log(`New chat message added to research ${researchId}. Total messages: ${currentChatHistory.length}`);
+};
+
+// Get market research with parsed chat history
+export const getMarketResearchWithChat = async (id: number): Promise<{
+  research: MarketResearchReport | null;
+  chatHistory: any[];
+  historyItem: HistoryItem | null;
+}> => {
+  const db = await getDb();
+  const result = await db.getFirstAsync<HistoryItem>('SELECT * FROM history WHERE id = ? AND type = ?', id, 'research');
+  
+  if (!result) {
+    return { research: null, chatHistory: [], historyItem: null };
+  }
+  
+  let research: MarketResearchReport | null = null;
+  let chatHistory: any[] = [];
+  
+  try {
+    research = JSON.parse(result.data);
+  } catch (error) {
+    console.error('Error parsing research data:', error);
+  }
+  
+  if (result.chatHistory) {
+    try {
+      chatHistory = JSON.parse(result.chatHistory);
+    } catch (error) {
+      console.error('Error parsing chat history:', error);
+    }
+  }
+  
+  return { research, chatHistory, historyItem: result };
+};
+
+// Get all market research items with chat counts
+export const getMarketResearchList = async (): Promise<Array<{
+  id: number;
+  title: string;
+  timestamp: string;
+  chatMessageCount: number;
+  research: MarketResearchReport;
+}>> => {
+  const db = await getDb();
+  const results = await db.getAllAsync<HistoryItem>('SELECT * FROM history WHERE type = ? ORDER BY timestamp DESC', 'research');
+  
+  return results.map(item => {
+    let chatMessageCount = 0;
+    let research: MarketResearchReport;
+    
+    try {
+      research = JSON.parse(item.data);
+    } catch (error) {
+      console.error('Error parsing research data:', error);
+      research = {} as MarketResearchReport;
+    }
+    
+    if (item.chatHistory) {
+      try {
+        const chatHistory = JSON.parse(item.chatHistory);
+        chatMessageCount = Array.isArray(chatHistory) ? chatHistory.length : 0;
+      } catch (error) {
+        console.error('Error parsing chat history:', error);
+      }
+    }
+    
+    return {
+      id: item.id,
+      title: item.title,
+      timestamp: item.timestamp,
+      chatMessageCount,
+      research
+    };
+  });
 };
 
 // Fetch all history from the database

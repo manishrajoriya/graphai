@@ -24,7 +24,14 @@ import AnalysisView, { FormattedAnalysis } from '../../components/AnalysisView';
 import MarketResearchReportView from '../../components/MarketResearchReportView';
 import { useAnalytics } from '../../hooks/useAnalytics';
 import { MarketResearchReport } from '../../services/aiServices';
-import { deleteHistoryItem, fetchHistory, HistoryItem, updateChatHistory } from '../../services/dbService';
+import { deleteHistoryItem, fetchHistory, HistoryItem, updateChatHistory, getMarketResearchList } from '../../services/dbService';
+
+interface ChatMessage {
+  id: string;
+  text: string;
+  sender: 'user' | 'ai';
+  timestamp: Date;
+}
 
 const { width } = Dimensions.get('window');
 
@@ -151,12 +158,14 @@ const ResearchHistoryCard = ({
   item, 
   onPress, 
   onOpenOptions,
-  index 
+  index,
+  chatMessageCount = 0
 }: { 
   item: MarketResearchReport & { id: number, timestamp: string }, 
   onPress: () => void, 
   onOpenOptions: () => void,
-  index: number
+  index: number,
+  chatMessageCount?: number
 }) => {
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
   const slideAnim = React.useRef(new Animated.Value(50)).current;
@@ -231,11 +240,20 @@ const ResearchHistoryCard = ({
                 {item.summary}
               </Text>
               
-              <View style={styles.timestampContainer}>
-                <Ionicons name="time-outline" size={14} color="#9ca3af" />
-                <Text style={styles.timestamp}>
-                  {formatDate(item.timestamp)}
-                </Text>
+              <View style={styles.researchFooter}>
+                <View style={styles.timestampContainer}>
+                  <Ionicons name="time-outline" size={14} color="#9ca3af" />
+                  <Text style={styles.timestamp}>
+                    {formatDate(item.timestamp)}
+                  </Text>
+                </View>
+                
+                {chatMessageCount > 0 && (
+                  <View style={styles.chatIndicator}>
+                    <Ionicons name="chatbubbles" size={14} color="#00d4aa" />
+                    <Text style={styles.chatCount}>{chatMessageCount}</Text>
+                  </View>
+                )}
               </View>
             </View>
           </View>
@@ -254,11 +272,18 @@ const ResearchHistoryCard = ({
 // --- Main History Screen ---
 const HistoryScreen = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [researchList, setResearchList] = useState<Array<{
+    id: number;
+    title: string;
+    timestamp: string;
+    chatMessageCount: number;
+    research: MarketResearchReport;
+  }>>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'analysis' | 'research'>('analysis');
   const [selectedItem, setSelectedItem] = useState<(Omit<HistoryItem, 'data'> & { data: FormattedAnalysis | MarketResearchReport }) | null>(null);
-  const [modalChatHistory, setModalChatHistory] = useState<any[]>([]);
+  const [modalChatHistory, setModalChatHistory] = useState<ChatMessage[]>([]);
   const [isModalVisible, setIsModalVisible] = useState(false);
 
   // Analytics tracking
@@ -288,6 +313,10 @@ const HistoryScreen = () => {
     try {
       const data = await fetchHistory();
       setHistory(data);
+      
+      // Load research list with chat counts
+      const researchData = await getMarketResearchList();
+      setResearchList(researchData);
     } catch (error) {
       console.error('Failed to fetch history:', error);
     } finally {
@@ -308,7 +337,23 @@ const HistoryScreen = () => {
   };
 
   const openModal = (item: HistoryItem) => {
-    const chatHistory = item.chatHistory ? JSON.parse(item.chatHistory) : [];
+    let chatHistory: ChatMessage[] = [];
+    if (item.chatHistory) {
+      try {
+        const rawChatHistory = JSON.parse(item.chatHistory);
+        // Ensure chat history is in the correct ChatMessage format
+        chatHistory = Array.isArray(rawChatHistory) ? rawChatHistory.map((msg: any, index: number) => ({
+          id: msg.id || `msg_${index}`,
+          text: msg.text || msg.message || '',
+          sender: (msg.sender === 'ai' ? 'ai' : 'user') as 'user' | 'ai',
+          timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date()
+        })) : [];
+      } catch (error) {
+        console.error('Error parsing chat history:', error);
+        chatHistory = [];
+      }
+    }
+    
     setModalChatHistory(chatHistory);
     const parsedData = typeof item.data === 'string' ? JSON.parse(item.data) : item.data;
     setSelectedItem({ ...item, data: parsedData });
@@ -368,6 +413,11 @@ const HistoryScreen = () => {
     [history, activeTab]
   );
 
+  const filteredResearchList = useMemo(() => 
+    researchList,
+    [researchList]
+  );
+
   const renderItem = ({ item, index }: { item: HistoryItem, index: number }) => {
     if (typeof item.data !== 'string' || !item.data) {
       console.error(`History item with id ${item.id} has invalid data.`);
@@ -388,12 +438,17 @@ const HistoryScreen = () => {
         );
       }
       if (item.type === 'research') {
+        // Find matching research item with chat count
+        const researchItem = researchList.find(r => r.id === item.id);
+        const chatMessageCount = researchItem?.chatMessageCount || 0;
+        
         return (
           <ResearchHistoryCard
             item={{ ...item, ...cardData }}
             onPress={() => openModal(item)}
             onOpenOptions={() => onOpenOptions(item)}
             index={index}
+            chatMessageCount={chatMessageCount}
           />
         );
       }
@@ -784,6 +839,27 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.7)',
     lineHeight: 20,
     marginBottom: 12,
+  },
+  researchFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  chatIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 212, 170, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 170, 0.3)',
+    gap: 4,
+  },
+  chatCount: {
+    fontSize: 12,
+    color: '#00d4aa',
+    fontWeight: '600',
   },
   detailRow: { 
     flexDirection: 'row', 

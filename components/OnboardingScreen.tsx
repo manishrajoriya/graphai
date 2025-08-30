@@ -1,334 +1,345 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import {
-    Animated,
-    Dimensions,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Dimensions,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import Svg, { Circle, Defs, Path, Stop, LinearGradient as SvgLinearGradient, Text as SvgText } from 'react-native-svg';
 
 const { width, height } = Dimensions.get('window');
 
-interface OnboardingSlide {
+interface FormData {
+  experience: string;
+  tradingStyle: string;
+  cryptoFocus: string;
+  riskTolerance: string;
+  analysisType: string;
+  timeframe: string;
+  aiFeatures: string;
+}
+
+interface FormStep {
   id: number;
   title: string;
   subtitle: string;
-  description: string;
+  question: string;
+  field: keyof FormData;
   icon: keyof typeof Ionicons.glyphMap;
-  gradient: string[];
-  illustration: React.ReactNode;
+  options: Array<{
+    label: string;
+    value: string;
+  }>;
 }
 
 interface OnboardingScreenProps {
-  onComplete: () => void;
+  onComplete: (formData: FormData) => void;
 }
 
 const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }) => {
-  const [currentSlide, setCurrentSlide] = useState(0);
-  const scrollViewRef = useRef<ScrollView>(null);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(0)).current;
+  const [currentStep, setCurrentStep] = useState(0);
+  const [formData, setFormData] = useState<FormData>({
+    experience: '',
+    tradingStyle: '',
+    cryptoFocus: '',
+    riskTolerance: '',
+    analysisType: '',
+    timeframe: '',
+    aiFeatures: '',
+  });
 
-  React.useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 800,
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
-  const ChartIllustration = () => (
-    <View style={styles.illustrationContainer}>
-      <Svg width={200} height={150} viewBox="0 0 200 150">
-        <Defs>
-          <SvgLinearGradient id="chartGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <Stop offset="0%" stopColor="#00d4aa" stopOpacity="1" />
-            <Stop offset="100%" stopColor="#00a8ff" stopOpacity="1" />
-          </SvgLinearGradient>
-        </Defs>
-        {/* Chart bars */}
-        <Path d="M20,120 L20,80 L35,80 L35,120 Z" fill="url(#chartGrad)" opacity="0.8" />
-        <Path d="M45,120 L45,60 L60,60 L60,120 Z" fill="url(#chartGrad)" opacity="0.9" />
-        <Path d="M70,120 L70,40 L85,40 L85,120 Z" fill="url(#chartGrad)" />
-        <Path d="M95,120 L95,70 L110,70 L110,120 Z" fill="url(#chartGrad)" opacity="0.8" />
-        <Path d="M120,120 L120,30 L135,30 L135,120 Z" fill="url(#chartGrad)" />
-        <Path d="M145,120 L145,50 L160,50 L160,120 Z" fill="url(#chartGrad)" opacity="0.9" />
-        <Path d="M170,120 L170,25 L185,25 L185,120 Z" fill="url(#chartGrad)" />
-        
-        {/* Trend line */}
-        <Path
-          d="M20,100 Q60,80 100,50 T180,20"
-          stroke="#ffd700"
-          strokeWidth="3"
-          fill="none"
-          opacity="0.9"
-        />
-        
-        {/* Floating elements */}
-        <Circle cx="50" cy="70" r="3" fill="#00d4aa" opacity="0.7" />
-        <Circle cx="120" cy="40" r="4" fill="#00a8ff" opacity="0.8" />
-        <Circle cx="160" cy="30" r="3" fill="#ffd700" opacity="0.9" />
-      </Svg>
-    </View>
-  );
-
-  const AIIllustration = () => (
-    <View style={styles.illustrationContainer}>
-      <Svg width={200} height={150} viewBox="0 0 200 150">
-        <Defs>
-          <SvgLinearGradient id="aiGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <Stop offset="0%" stopColor="#ff6b9d" stopOpacity="1" />
-            <Stop offset="100%" stopColor="#00d4aa" stopOpacity="1" />
-          </SvgLinearGradient>
-        </Defs>
-        
-        {/* Brain/AI representation */}
-        <Path
-          d="M100,30 C120,30 140,45 140,70 C140,85 130,95 120,100 C110,105 90,105 80,100 C70,95 60,85 60,70 C60,45 80,30 100,30 Z"
-          fill="url(#aiGrad)"
-          opacity="0.8"
-        />
-        
-        {/* Neural network nodes */}
-        <Circle cx="80" cy="60" r="4" fill="#00d4aa" />
-        <Circle cx="100" cy="50" r="5" fill="#00a8ff" />
-        <Circle cx="120" cy="65" r="4" fill="#ffd700" />
-        <Circle cx="90" cy="80" r="3" fill="#ff6b9d" />
-        <Circle cx="110" cy="75" r="4" fill="#00d4aa" />
-        
-        {/* Connections */}
-        <Path d="M80,60 L100,50" stroke="#ffffff" strokeWidth="2" opacity="0.6" />
-        <Path d="M100,50 L120,65" stroke="#ffffff" strokeWidth="2" opacity="0.6" />
-        <Path d="M80,60 L90,80" stroke="#ffffff" strokeWidth="2" opacity="0.6" />
-        <Path d="M100,50 L110,75" stroke="#ffffff" strokeWidth="2" opacity="0.6" />
-        <Path d="M120,65 L110,75" stroke="#ffffff" strokeWidth="2" opacity="0.6" />
-        
-        {/* Data streams */}
-        <Path d="M30,120 Q50,110 70,105" stroke="#00d4aa" strokeWidth="2" fill="none" opacity="0.7" />
-        <Path d="M170,120 Q150,110 130,105" stroke="#00a8ff" strokeWidth="2" fill="none" opacity="0.7" />
-      </Svg>
-    </View>
-  );
-
-  const MoneyIllustration = () => (
-    <View style={styles.illustrationContainer}>
-      <Svg width={200} height={150} viewBox="0 0 200 150">
-        <Defs>
-          <SvgLinearGradient id="moneyGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <Stop offset="0%" stopColor="#ffd700" stopOpacity="1" />
-            <Stop offset="100%" stopColor="#00d4aa" stopOpacity="1" />
-          </SvgLinearGradient>
-        </Defs>
-        
-        {/* Coins */}
-        <Circle cx="70" cy="80" r="20" fill="url(#moneyGrad)" opacity="0.9" />
-        <Circle cx="130" cy="60" r="25" fill="url(#moneyGrad)" opacity="0.8" />
-        <Circle cx="100" cy="100" r="18" fill="url(#moneyGrad)" />
-        
-        {/* Dollar signs - using SVG Text elements */}
-        <SvgText x="65" y="88" fontSize="16" fill="#0a0b14" fontWeight="bold">$</SvgText>
-        <SvgText x="123" y="70" fontSize="20" fill="#0a0b14" fontWeight="bold">$</SvgText>
-        <SvgText x="95" y="108" fontSize="14" fill="#0a0b14" fontWeight="bold">$</SvgText>
-        
-        {/* Growth arrow */}
-        <Path
-          d="M40,120 Q80,100 120,80 Q140,70 160,50"
-          stroke="#00d4aa"
-          strokeWidth="4"
-          fill="none"
-          opacity="0.9"
-        />
-        <Path d="M150,55 L160,50 L155,45" stroke="#00d4aa" strokeWidth="4" fill="none" />
-        
-        {/* Sparkles */}
-        <Circle cx="50" cy="50" r="2" fill="#ffd700" opacity="0.8" />
-        <Circle cx="150" cy="90" r="3" fill="#00a8ff" opacity="0.7" />
-        <Circle cx="180" cy="70" r="2" fill="#ff6b9d" opacity="0.8" />
-      </Svg>
-    </View>
-  );
-
-  const slides: OnboardingSlide[] = [
+  const formSteps: FormStep[] = [
     {
       id: 1,
-      title: "Welcome to GraphAI",
-      subtitle: "AI-Powered Trading Analysis",
-      description: "Transform your trading decisions with advanced AI chart analysis. Upload any trading chart and get instant, professional insights.",
-      icon: "trending-up",
-      gradient: ['#00d4aa', '#00a8ff'],
-      illustration: <ChartIllustration />,
+      title: "Trading Experience",
+      subtitle: "AI-Powered Crypto Analysis",
+      question: "What's your crypto trading experience?",
+      field: "experience",
+      icon: "person-outline",
+      options: [
+        { label: "New to Crypto Trading", value: "beginner" },
+        { label: "Some Experience (6+ months)", value: "intermediate" },
+        { label: "Experienced Trader (2+ years)", value: "advanced" },
+        { label: "Professional/Institutional", value: "professional" },
+      ],
     },
     {
       id: 2,
-      title: "Smart AI Analysis",
-      subtitle: "Advanced Pattern Recognition",
-      description: "Our AI analyzes chart patterns, trends, and market signals to provide you with actionable insights.",
-      icon: "bulb",
-      gradient: ['#ff6b9d', '#00d4aa'],
-      illustration: <AIIllustration />,
+      title: "Trading Style",
+      subtitle: "Define Your Approach",
+      question: "Which trading style fits you best?",
+      field: "tradingStyle",
+      icon: "trending-up-outline",
+      options: [
+        { label: "Scalping (Minutes)", value: "scalping" },
+        { label: "Day Trading (Hours)", value: "day_trading" },
+        { label: "Swing Trading (Days/Weeks)", value: "swing_trading" },
+        { label: "Long-term Holding", value: "hodling" },
+      ],
     },
     {
       id: 3,
-      title: "Grow Your Wealth",
-      subtitle: "Make Informed Decisions",
-      description: "Turn market insights into profitable trades.",
-      icon: "cash",
-      gradient: ['#ffd700', '#00d4aa'],
-      illustration: <MoneyIllustration />,
+      title: "Crypto Focus",
+      subtitle: "Market Preference",
+      question: "Which crypto markets interest you?",
+      field: "cryptoFocus",
+      icon: "logo-bitcoin",
+      options: [
+        { label: "Bitcoin Only", value: "bitcoin" },
+        { label: "Major Cryptos (BTC, ETH, ADA)", value: "majors" },
+        { label: "Altcoins & DeFi Tokens", value: "altcoins" },
+        { label: "All Cryptocurrency Markets", value: "all" },
+      ],
+    },
+    {
+      id: 4,
+      title: "Risk Profile",
+      subtitle: "Investment Strategy",
+      question: "What's your risk tolerance?",
+      field: "riskTolerance",
+      icon: "shield-outline",
+      options: [
+        { label: "Conservative (Stable coins focus)", value: "conservative" },
+        { label: "Moderate (Balanced portfolio)", value: "moderate" },
+        { label: "Aggressive (High growth potential)", value: "aggressive" },
+        { label: "Very High (Maximum volatility)", value: "very_high" },
+      ],
+    },
+    {
+      id: 5,
+      title: "AI Analysis Type",
+      subtitle: "Choose Your Tools",
+      question: "Which AI analysis do you need most?",
+      field: "analysisType",
+      icon: "analytics-outline",
+      options: [
+        { label: "Technical Pattern Recognition", value: "technical" },
+        { label: "Market Sentiment Analysis", value: "sentiment" },
+        { label: "Price Prediction Models", value: "prediction" },
+        { label: "News & Social Media Impact", value: "news_analysis" },
+      ],
+    },
+    {
+      id: 6,
+      title: "Chart Timeframe",
+      subtitle: "Analysis Period",
+      question: "What timeframe do you analyze?",
+      field: "timeframe",
+      icon: "time-outline",
+      options: [
+        { label: "1-15 Minutes (Scalping)", value: "short" },
+        { label: "1-4 Hours (Intraday)", value: "medium" },
+        { label: "Daily Charts", value: "daily" },
+        { label: "Weekly/Monthly (Long-term)", value: "long" },
+      ],
+    },
+    {
+      id: 7,
+      title: "AI Features",
+      subtitle: "Final Setup",
+      question: "Which AI features interest you most?",
+      field: "aiFeatures",
+      icon: "flash-outline",
+      options: [
+        { label: "Automated Trading Signals", value: "signals" },
+        { label: "Portfolio Risk Analysis", value: "risk_analysis" },
+        { label: "Market Trend Predictions", value: "predictions" },
+        { label: "Real-time Alert System", value: "alerts" },
+      ],
     },
   ];
 
+  const currentStepData = formSteps[currentStep];
+  const progress = ((currentStep + 1) / formSteps.length) * 100;
+  const isLastStep = currentStep === formSteps.length - 1;
+  const canProceed = formData[currentStepData.field as keyof FormData];
+
   const handleNext = () => {
-    if (currentSlide < slides.length - 1) {
-      const nextSlide = currentSlide + 1;
-      setCurrentSlide(nextSlide);
-      scrollViewRef.current?.scrollTo({ x: nextSlide * width, animated: true });
-      
-      Animated.sequence([
-        Animated.timing(slideAnim, {
-          toValue: -50,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
+    if (isLastStep) {
+      onComplete(formData);
     } else {
-      onComplete();
+      setCurrentStep(currentStep + 1);
     }
   };
 
+  const handleBack = () => {
+    if (currentStep > 0) {
+      setCurrentStep(currentStep - 1);
+    }
+  };
+
+  const updateFormData = (field: keyof FormData, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
   const handleSkip = () => {
-    onComplete();
-  };
-
-  const handleDotPress = (index: number) => {
-    setCurrentSlide(index);
-    scrollViewRef.current?.scrollTo({ x: index * width, animated: true });
-  };
-
-  const onScroll = (event: any) => {
-    const slideIndex = Math.round(event.nativeEvent.contentOffset.x / width);
-    setCurrentSlide(slideIndex);
+    // Fill with default values and complete
+    const defaultData = {
+      experience: formData.experience || 'intermediate',
+      tradingStyle: formData.tradingStyle || 'swing_trading',
+      cryptoFocus: formData.cryptoFocus || 'majors',
+      riskTolerance: formData.riskTolerance || 'moderate',
+      analysisType: formData.analysisType || 'technical',
+      timeframe: formData.timeframe || 'daily',
+      aiFeatures: formData.aiFeatures || 'signals',
+    };
+    onComplete(defaultData);
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0a0b14" />
+      <StatusBar barStyle="light-content" backgroundColor="#0a0f1c" />
       
       <LinearGradient
-        colors={['#0a0b14', '#1a1b2e', '#16213e'] as const}
+        colors={['#0a0f1c', '#1a1f3a', '#0f1419']}
         style={StyleSheet.absoluteFillObject}
       />
 
-      {/* Skip Button */}
-      <Animated.View style={[styles.skipContainer, { opacity: fadeAnim }]}>
-        <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
-          <Text style={styles.skipText}>Skip</Text>
-        </TouchableOpacity>
-      </Animated.View>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
+          <View style={styles.logoContainer}>
+            <View style={styles.logo}>
+              <Text style={styles.logoText}>GA</Text>
+            </View>
+            <Text style={styles.appName}>GraphAI</Text>
+          </View>
+          
+          <View style={styles.progressContainer}>
+            <Text style={styles.progressText}>
+              {currentStep + 1} of {formSteps.length}
+            </Text>
+            <View style={styles.progressTrack}>
+              <View 
+                style={[styles.progressFill, { width: `${progress}%` }]} 
+              />
+            </View>
+          </View>
+        </View>
+      </View>
 
-      {/* Slides */}
-      <ScrollView
-        ref={scrollViewRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={onScroll}
+      {/* Main Content */}
+      <ScrollView 
         style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        {slides.map((slide, index) => (
-          <Animated.View
-            key={slide.id}
-            style={[
-              styles.slide,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
-              },
-            ]}
-          >
-            {/* Illustration */}
-            <View style={styles.illustrationSection}>
-              {slide.illustration}
-              
-              {/* Floating elements for visual appeal */}
-              <View style={[styles.floatingElement, styles.element1]}>
-                <Ionicons name="analytics" size={20} color="#00d4aa" />
-              </View>
-              <View style={[styles.floatingElement, styles.element2]}>
-                <Ionicons name="trending-up" size={16} color="#00a8ff" />
-              </View>
-              <View style={[styles.floatingElement, styles.element3]}>
-                <Ionicons name="flash" size={14} color="#ffd700" />
-              </View>
-            </View>
-
-            {/* Content */}
-            <View style={styles.contentSection}>
-              <View style={styles.iconContainer}>
-                <LinearGradient
-                  colors={slide.gradient as [string, string, ...string[]]}
-                  style={styles.iconGradient}
-                >
-                  <Ionicons name={slide.icon} size={32} color="white" />
-                </LinearGradient>
-              </View>
-
-              <Text style={styles.title}>{slide.title}</Text>
-              <Text style={styles.subtitle}>{slide.subtitle}</Text>
-              <Text style={styles.description}>{slide.description}</Text>
-            </View>
-          </Animated.View>
-        ))}
-      </ScrollView>
-
-      {/* Bottom Section */}
-      <Animated.View style={[styles.bottomSection, { opacity: fadeAnim }]}>
-        {/* Pagination Dots */}
-        <View style={styles.pagination}>
-          {slides.map((_, index) => (
-            <TouchableOpacity
-              key={index}
-              onPress={() => handleDotPress(index)}
-              style={[
-                styles.dot,
-                currentSlide === index && styles.activeDot,
-              ]}
-            />
-          ))}
+        {/* Step Header */}
+        <View style={styles.stepHeader}>
+          <View style={styles.stepIconContainer}>
+            <Ionicons name={currentStepData.icon} size={32} color="#00d4aa" />
+          </View>
+          
+          <Text style={styles.stepTitle}>{currentStepData.title}</Text>
+          <Text style={styles.stepSubtitle}>{currentStepData.subtitle}</Text>
         </View>
 
-        {/* Action Button */}
-        <TouchableOpacity style={styles.actionButton} onPress={handleNext}>
-          <LinearGradient
-            colors={slides[currentSlide].gradient as [string, string, ...string[]]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.actionButtonGradient}
+        {/* Question */}
+        <View style={styles.questionContainer}>
+          <Text style={styles.questionText}>{currentStepData.question}</Text>
+        </View>
+
+        {/* Options */}
+        <View style={styles.optionsContainer}>
+          {currentStepData.options.map((option, index) => {
+            const isSelected = formData[currentStepData.field as keyof FormData] === option.value;
+            
+            return (
+              <TouchableOpacity
+                key={index}
+                style={[
+                  styles.option,
+                  isSelected && styles.optionSelected
+                ]}
+                onPress={() => updateFormData(currentStepData.field as keyof FormData, option.value)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.optionContent}>
+                  <Text style={[
+                    styles.optionText,
+                    isSelected && styles.optionTextSelected
+                  ]}>
+                    {option.label}
+                  </Text>
+                  
+                  <View style={[
+                    styles.radioButton,
+                    isSelected && styles.radioButtonSelected
+                  ]}>
+                    {isSelected && <View style={styles.radioButtonInner} />}
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Completion Message */}
+        {isLastStep && (
+          <View style={styles.completionContainer}>
+            <Text style={styles.completionText}>
+              Your AI-powered crypto trading setup is ready!
+            </Text>
+            <Text style={styles.completionSubtext}>
+              Get personalized insights, automated analysis, and smart trading signals.
+            </Text>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* Bottom Navigation */}
+      <View style={styles.bottomContainer}>
+        <View style={styles.buttonRow}>
+          {currentStep > 0 && (
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={handleBack}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="chevron-back" size={20} color="#ffffff" />
+              <Text style={styles.backButtonText}>Back</Text>
+            </TouchableOpacity>
+          )}
+          
+          <View style={styles.buttonSpacer} />
+          
+          {!isLastStep && (
+            <TouchableOpacity
+              style={styles.skipButton}
+              onPress={handleSkip}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.skipButtonText}>Skip Setup</Text>
+            </TouchableOpacity>
+          )}
+          
+          <TouchableOpacity
+            style={[
+              styles.nextButton,
+              !canProceed && styles.nextButtonDisabled,
+              isLastStep && styles.completeButton
+            ]}
+            onPress={handleNext}
+            activeOpacity={0.8}
+            disabled={!canProceed}
           >
-            <Text style={styles.actionButtonText}>
-              {currentSlide === slides.length - 1 ? 'Get Started' : 'Next'}
+            <Text style={styles.nextButtonText}>
+              {isLastStep ? 'Start Trading' : 'Continue'}
             </Text>
             <Ionicons 
-              name={currentSlide === slides.length - 1 ? 'rocket' : 'arrow-forward'} 
+              name={isLastStep ? "rocket" : "chevron-forward"} 
               size={20} 
-              color="white" 
-              style={styles.actionButtonIcon}
+              color="#ffffff" 
             />
-          </LinearGradient>
-        </TouchableOpacity>
-      </Animated.View>
+          </TouchableOpacity>
+        </View>
+      </View>
     </SafeAreaView>
   );
 };
@@ -336,171 +347,241 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0b14',
+    backgroundColor: '#0a0f1c',
   },
-  skipContainer: {
-    position: 'absolute',
-    top: 60,
-    right: 24,
-    zIndex: 10,
+  header: {
+    paddingTop: Platform.OS === 'ios' ? 10 : 30,
+    paddingBottom: 20,
+    paddingHorizontal: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
   },
-  skipButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  skipText: {
+  logoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  logo: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#00d4aa',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  logoText: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  appName: {
+    color: '#ffffff',
+    fontSize: 20,
     fontWeight: '600',
+  },
+  progressContainer: {
+    alignItems: 'flex-end',
+  },
+  progressText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 12,
+    fontWeight: '500',
+    marginBottom: 6,
+  },
+  progressTrack: {
+    width: 80,
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 2,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#00d4aa',
+    borderRadius: 2,
   },
   scrollView: {
     flex: 1,
   },
-  slide: {
-    width: width,
-    flex: 1,
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 100,
+  },
+  stepHeader: {
+    alignItems: 'center',
     paddingHorizontal: 24,
-    paddingTop: 100,
+    paddingTop: 32,
+    paddingBottom: 24,
   },
-  illustrationSection: {
-    flex: 0.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    marginBottom: 40,
-  },
-  illustrationContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(26, 27, 46, 0.3)',
-    borderRadius: 100,
-    width: 200,
-    height: 200,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 212, 170, 0.2)',
-    shadowColor: '#00d4aa',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  floatingElement: {
-    position: 'absolute',
-    backgroundColor: 'rgba(26, 27, 46, 0.8)',
-    borderRadius: 20,
-    padding: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 212, 170, 0.3)',
-  },
-  element1: {
-    top: 20,
-    right: 20,
-  },
-  element2: {
-    bottom: 30,
-    left: 10,
-  },
-  element3: {
-    top: 60,
-    left: -10,
-  },
-  contentSection: {
-    flex: 0.5,
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  iconContainer: {
-    marginBottom: 24,
-  },
-  iconGradient: {
+  stepIconContainer: {
     width: 64,
     height: 64,
+    backgroundColor: 'rgba(0, 212, 170, 0.15)',
     borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#00d4aa',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: 'rgba(0, 212, 170, 0.3)',
   },
-  title: {
-    fontSize: 32,
-    fontWeight: '800',
+  stepTitle: {
+    fontSize: 26,
+    fontWeight: '700',
     color: '#ffffff',
     textAlign: 'center',
     marginBottom: 8,
-    letterSpacing: -0.5,
   },
-  subtitle: {
+  stepSubtitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#00d4aa',
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  questionContainer: {
+    paddingHorizontal: 24,
+    marginBottom: 32,
+  },
+  questionText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#ffffff',
+    textAlign: 'center',
+    lineHeight: 26,
+  },
+  optionsContainer: {
+    paddingHorizontal: 24,
+    gap: 12,
+  },
+  option: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+  },
+  optionSelected: {
+    borderColor: '#00d4aa',
+    backgroundColor: 'rgba(0, 212, 170, 0.1)',
+  },
+  optionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  optionText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.8)',
+    flex: 1,
+  },
+  optionTextSelected: {
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  radioButton: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioButtonSelected: {
+    borderColor: '#00d4aa',
+  },
+  radioButtonInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#00d4aa',
+  },
+  completionContainer: {
+    paddingHorizontal: 24,
+    paddingTop: 32,
+    alignItems: 'center',
+  },
+  completionText: {
     fontSize: 18,
     fontWeight: '600',
     color: '#00d4aa',
     textAlign: 'center',
-    marginBottom: 16,
-    letterSpacing: 0.3,
+    marginBottom: 12,
   },
-  description: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.8)',
+  completionSubtext: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.7)',
     textAlign: 'center',
-    lineHeight: 24,
-    letterSpacing: 0.2,
+    lineHeight: 20,
   },
-  bottomSection: {
+  bottomContainer: {
     paddingHorizontal: 24,
-    paddingBottom: 40,
-    alignItems: 'center',
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+    paddingTop: 20,
+    backgroundColor: 'rgba(10, 15, 28, 0.95)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
-  pagination: {
+  buttonRow: {
     flexDirection: 'row',
-    marginBottom: 32,
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    marginHorizontal: 4,
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
   },
-  activeDot: {
-    width: 24,
+  backButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  buttonSpacer: {
+    flex: 1,
+  },
+  skipButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginRight: 12,
+  },
+  skipButtonText: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  nextButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#00d4aa',
-    shadowColor: '#00d4aa',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.6,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  actionButton: {
-    width: '100%',
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#00d4aa',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  actionButtonGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    minWidth: 120,
     justifyContent: 'center',
-    paddingVertical: 18,
-    paddingHorizontal: 32,
   },
-  actionButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+  nextButtonDisabled: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
-  actionButtonIcon: {
-    marginLeft: 12,
+  completeButton: {
+    backgroundColor: '#ff6b35',
+  },
+  nextButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginRight: 8,
   },
 });
 

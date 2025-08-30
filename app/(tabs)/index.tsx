@@ -453,19 +453,6 @@ const TradingChartApp = () => {
                   onSaveReport={handleSaveResearch}
                   onRequireSubscription={() => setShowPaywall(true)}
                 />
-          <View style={styles.footer}>
-            <TouchableOpacity style={styles.saveButton} onPress={() => handleSaveResearch(chatHistory)}>
-              <LinearGradient
-                colors={['#00d4aa', '#00a8ff']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.saveButtonGradient}
-              >
-                <Ionicons name="save-outline" size={20} color="white" />
-                <Text style={styles.saveButtonText}>Save to History</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
         </SafeAreaView>
       </Modal>
 
@@ -745,28 +732,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(0, 212, 170, 0.2)',
     backgroundColor: 'rgba(26, 27, 46, 0.9)',
-  },
-  saveButton: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#00d4aa',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  saveButtonGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 10,
-    letterSpacing: 0.5,
   },
   imageSourceModalContent: {
     backgroundColor: '#1a1b2e',

@@ -102,6 +102,7 @@ const ChatWithContext: React.FC<ChatWithContextProps> = ({
     <KeyboardAvoidingView 
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
     >
       {/* Context Status */}
       <ContextIndicator
@@ -115,6 +116,8 @@ const ChatWithContext: React.FC<ChatWithContextProps> = ({
         ref={scrollViewRef}
         style={styles.messagesContainer}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.messagesContent}
       >
         {messages.length === 0 && (
           <View style={styles.emptyState}>
@@ -178,6 +181,12 @@ const ChatWithContext: React.FC<ChatWithContextProps> = ({
           multiline
           maxLength={500}
           editable={!isLoading}
+          onFocus={() => {
+            // Scroll to bottom when input is focused
+            setTimeout(() => {
+              scrollViewRef.current?.scrollToEnd({ animated: true });
+            }, 100);
+          }}
         />
         <TouchableOpacity
           style={[
@@ -206,6 +215,10 @@ const styles = StyleSheet.create({
   messagesContainer: {
     flex: 1,
     padding: 16,
+  },
+  messagesContent: {
+    flexGrow: 1,
+    paddingBottom: 16,
   },
   emptyState: {
     flex: 1,
@@ -296,6 +309,7 @@ const styles = StyleSheet.create({
     borderTopColor: '#334155',
     alignItems: 'flex-end',
     gap: 12,
+    paddingBottom: Platform.OS === 'ios' ? 16 : 16,
   },
   textInput: {
     flex: 1,
